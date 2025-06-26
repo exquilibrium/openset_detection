@@ -1,0 +1,63 @@
+Results for Method: frcnn_GMMDet_Voc_lru1 with uncertainty gmm
+------ AUROC: 0.987
+------ TPR at 0.0FPR: 98.7
+------ TPR at 0.0FPR: 98.7
+------ TPR at 0.0FPR: 98.7
+Results for Method: frcnn_GMMDet_Voc_lru1_drone with uncertainty gmm
+------ AUROC: 1.0
+------ TPR at 0.0FPR: 100.0
+------ TPR at 0.0FPR: 100.0
+------ TPR at 0.0FPR: 100.0
+Results for Method: frcnn_GMMDet_Voc_lru1_lander with uncertainty gmm
+------ AUROC: 1.0
+------ TPR at 0.0FPR: 100.0
+------ TPR at 0.0FPR: 100.0
+------ TPR at 0.0FPR: 100.0
+Results for Method: frcnn_GMMDet_Voc_lru1_lru2 with uncertainty gmm
+------ AUROC: 0.748
+------ TPR at 0.0FPR: 60.0
+------ TPR at 5.9FPR: 62.9
+------ TPR at 17.6FPR: 71.4
+
+Results for Method: frcnn_GMMDet_Voc_lru1 with uncertainty gmm
+------ AUROC: 1.0
+------ TPR at 0.0FPR: 0.0
+------ TPR at 0.0FPR: 0.0
+------ TPR at 0.0FPR: 0.0
+Results for Method: frcnn_GMMDet_Voc_lru1_drone with uncertainty gmm
+------ AUROC: 0.979
+------ TPR at 0.0FPR: 92.6
+------ TPR at 0.0FPR: 92.6
+------ TPR at 20.0FPR: 99.2
+Results for Method: frcnn_GMMDet_Voc_lru1_lander with uncertainty gmm
+------ AUROC: 0.749
+------ TPR at 4.2FPR: 41.2
+------ TPR at 8.3FPR: 47.1
+------ TPR at 16.7FPR: 52.9
+Results for Method: frcnn_GMMDet_Voc_lru1_lru2 with uncertainty gmm
+------ AUROC: 0.927
+------ TPR at 4.3FPR: 77.1
+------ TPR at 8.7FPR: 84.3
+------ TPR at 17.4FPR: 88.6
+
+Results for Method: frcnn_GMMDet_Voc_lru1 with uncertainty gmm
+------ AUROC: 0.878
+------ TPR at 0.0FPR: 87.8
+------ TPR at 0.0FPR: 87.8
+------ TPR at 0.0FPR: 87.8
+Results for Method: frcnn_GMMDet_Voc_lru1_drone with uncertainty gmm
+------ AUROC: 0.0
+------ TPR at 0.0FPR: 0.0
+------ TPR at 0.0FPR: 0.0
+------ TPR at 0.0FPR: 0.0
+Results for Method: frcnn_GMMDet_Voc_lru1_lander with uncertainty gmm
+------ AUROC: 1.0
+------ TPR at 0.0FPR: 100.0
+------ TPR at 0.0FPR: 100.0
+------ TPR at 0.0FPR: 100.0
+Results for Method: frcnn_GMMDet_Voc_lru1_lru2 with uncertainty gmm
+------ AUROC: 0.83
+------ TPR at 0.0FPR: 65.7
+------ TPR at 0.0FPR: 65.7
+------ TPR at 11.1FPR: 75.7
+

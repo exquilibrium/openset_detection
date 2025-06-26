@@ -30,7 +30,7 @@ from base_dirs import *
 def parse_args():
 	parser = argparse.ArgumentParser(description='Test with Distance')
 	parser.add_argument('dType', default = 'FRCNN', help='FRCNN or retinanet')
-	parser.add_argument('--dataset', default = 'voc', help='voc or coco')
+	parser.add_argument('--dataset', default = 'custom', help='custom, voc or coco')
 	parser.add_argument('--train', default = 1, type = int, help='associate training data?')
 	parser.add_argument('--test', default = 1, type = int, help='associate test data?')
 	parser.add_argument('--val', default = 1, type = int, help='associate validation data?')
@@ -44,7 +44,18 @@ args = parse_args()
 ###################################################################################################
 ##############Setup Config file ###################################################################
 #load the config file for the model that will also return logits
-if args.dataset == 'voc':
+if args.dataset == 'custom':
+	suffix = args.saveNm[len("frcnn_GMMDet_Voc_"):] # xml, xml_10c, ardea10
+	args.config = f'configs/faster_rcnn/faster_rcnn_r50_fpn_1x_voc0712OS_wLogits_{suffix}.py'  ### <<<<<<<<<<---------- hardcoded path ---------->>>>>>>>>>
+	num_classes_dict = {
+		'xml': 15,
+		'lru1': 3,
+		'lru1_drone': 2,
+		'lru1_lander': 2,
+		'lru1_lru2': 2,
+	}
+	num_classes = num_classes_dict[suffix] # CS classes
+elif args.dataset == 'voc':
 	args.config = 'configs/faster_rcnn/faster_rcnn_r50_fpn_1x_voc0712OS_wLogits.py'
 	num_classes = 15
 else:
@@ -122,8 +133,8 @@ def associate_detections(dataHolder, dets, gt, clsCutoff = 15):
 
 		knownBoxes = gtBoxes[gtLabels < clsCutoff]
 		knownLabels = gtLabels[gtLabels < clsCutoff]
-		unknownBoxes = gtBoxes[gtLabels > clsCutoff]
-		unknownLabels = gtLabels[gtLabels > clsCutoff]
+		unknownBoxes = gtBoxes[gtLabels >= clsCutoff] # Class cutoff needs to include clsCutoff
+		unknownLabels = gtLabels[gtLabels >= clsCutoff] # Class cutoff needs to include clsCutoff
 
 		#sort from most confident to least
 		sorted_scores = np.sort(detScores)[::-1]
@@ -131,6 +142,10 @@ def associate_detections(dataHolder, dets, gt, clsCutoff = 15):
 
 		detAssociated = [0]*len(detScores)
 		gtKnownAssociated = [0]*len(knownBoxes)
+
+		# Logging classification types: 0, 1, <none>, 2, 3
+		# Correct classification, Misclassification, Ignored, Unknown, Background
+		#clss = [0,0,0,0,0]
 
 		#first, we check if the detection has fallen on a known class
 		#if an IoU > iouThresh with a known class --> it is detecting that known class
@@ -164,11 +179,13 @@ def associate_detections(dataHolder, dets, gt, clsCutoff = 15):
 							dataHolder['scores'] += [score]
 							dataHolder['logits'] += [list(detLogits[detIdx])]
 							dataHolder['type'] += [0]
+							#clss[0] += 1
 						#known class was misclassified
 						else:
 							dataHolder['scores'] += [score]
 							dataHolder['logits'] += [list(detLogits[detIdx])]
 							dataHolder['type'] += [1]
+							#clss[1] += 1
 						break
 					else:
 						#doesn't have an iou greater than 0.5 with anything
@@ -176,6 +193,9 @@ def associate_detections(dataHolder, dets, gt, clsCutoff = 15):
 		
 		#all detections have been associated
 		if np.sum(detAssociated) == len(detAssociated):
+			# Write each log entry on a new line
+			#with open('/home/chen/openset_detection/log_associate_data.txt', "a") as log_file:
+			#	log_file.write(str(clss) + "\n")
 			return dataHolder
 
 		### Next, check if the detection overlaps an ignored gt known object - these detections are ignored
@@ -197,11 +217,15 @@ def associate_detections(dataHolder, dets, gt, clsCutoff = 15):
 					if ious[iouIdx] >= iouThresh:
 						#associating this detection and gt object
 						detAssociated[detIdx] = 1
+						#clss[2] += 1
 					break
 
 
 		#all detections have been associated
 		if np.sum(detAssociated) == len(detAssociated):
+			# Write each log entry on a new line
+			#with open('/home/chen/openset_detection/log_associate_data.txt', "a") as log_file:
+			#	log_file.write(str(clss) + "\n")
 			return dataHolder
 
 		#if an IoU > 0.5 with an unknown class (but not any known classes) --> it is detecting the unknown class
@@ -229,6 +253,7 @@ def associate_detections(dataHolder, dets, gt, clsCutoff = 15):
 						dataHolder['logits'] += [list(detLogits[detIdx])]
 						dataHolder['type'] += [2]
 						dataHolder['ious'] += [ious[iouIdx]]
+						#clss[3] += 1
 						break
 					else:
 						#no overlap greater than 0.5
@@ -238,6 +263,9 @@ def associate_detections(dataHolder, dets, gt, clsCutoff = 15):
 		detAssociated = newDetAssociated
 
 		if np.sum(detAssociated) == len(detAssociated):
+			# Write each log entry on a new line
+			#with open('/home/chen/openset_detection/log_associate_data.txt', "a") as log_file:
+			#	log_file.write(str(clss) + "\n")
 			return dataHolder
 
 		#otherwise remaining detections are all background detections
@@ -249,11 +277,14 @@ def associate_detections(dataHolder, dets, gt, clsCutoff = 15):
 				dataHolder['logits'] += [list(detLogits[detIdx])]
 				dataHolder['ious'] += [0]
 				detAssociated[detIdx] = 1
+				#clss[4] += 1
 
 		if np.sum(detAssociated) != len(detAssociated):
 			print("THERE IS A BIG ASSOCIATION PROBLEM")
 			exit()
-		
+		# Write each log entry on a new line
+		#with open('/home/chen/openset_detection/log_associate_data.txt', "a") as log_file:
+		#	log_file.write(str(clss) + "\n")
 		return dataHolder
 
 
@@ -269,8 +300,16 @@ if args.train:
 	allLabels = []
 	allScores = []
 	allIoUs = []
+	
+	if args.dataset == 'custom':  ### <<<<<<<<<<---------- hardcoded path---------->>>>>>>>>>
+		trainDataset = build_dataset(cfg.data.trainCS)
+		trainDatasets = [trainDataset]
 
-	if args.dataset == 'voc':
+		with open(f'{results_dir}/train/{args.saveNm}.json', 'r') as f:
+			trainDets = json.load(f)
+
+		allTrainDets = [trainDets]
+	elif args.dataset == 'voc':
 		trainDataset07 = build_dataset(cfg.data.trainCS07)
 		trainDataset12 = build_dataset(cfg.data.trainCS12)
 		trainDatasets = [trainDataset07, trainDataset12]

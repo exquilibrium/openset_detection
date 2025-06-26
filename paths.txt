@@ -1,0 +1,8 @@
+
+
+"/media/chen/76AECF8EAECF4579/data/lru1_all_labels"
+
+"/home_local/chen_le/ARCHES/ardea10_run04_labels"
+
+"/volume/hot_storage/slurm_data/chen_le/ARCHES"
+

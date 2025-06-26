@@ -1,0 +1,13 @@
+Prepare Data
+cd datasets
+python create_osdata.py --dataset voc
+
+
+Train
+cd mmdetection
+python tools/train.py configs/pascal_voc/faster_rcnn_r50_fpn_1x_voc0712OS_Anchor.py --gpus 1 --work-dir 'weights/frcnnCEwAnchorVocCS'
+
+
+Test
+cd mmdetection
+./test_standard.sh  frcnnCEwAnchorVocCS frcnn_GMMDet_Voc voc

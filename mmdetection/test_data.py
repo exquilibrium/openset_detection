@@ -1,3 +1,5 @@
+# Modified from: https://github.com/dimitymiller/openset_detection
+
 import argparse
 import os
 import warnings
@@ -28,7 +30,7 @@ from base_dirs import *
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Test the data and save the raw detections')
-    parser.add_argument('--dataset', default = 'voc', help='voc or coco')
+    parser.add_argument('--dataset', default = 'custom', help='custom, voc or coco')
     parser.add_argument('--subset', default = None, help='train or val or test')
     parser.add_argument('--dir', default = None, help='directory of object detector weights')
     parser.add_argument('--checkpoint', default = 'latest.pth', help='what is the name of the object detector weights')
@@ -40,7 +42,10 @@ args = parse_args()
 
 
 #load the config file for the model that will also return logits
-if args.dataset == 'voc':
+if args.dataset == 'custom':
+    suffix = args.saveNm[len("frcnn_GMMDet_Voc_"):] # xml, xml_10c, ardea10
+    args.config = f'configs/faster_rcnn/faster_rcnn_r50_fpn_1x_voc0712OS_wLogits_{suffix}.py' ### <<<<<<<<<<---------- hardcoded path---------->>>>>>>>>>
+elif args.dataset == 'voc':
     args.config = 'configs/faster_rcnn/faster_rcnn_r50_fpn_1x_voc0712OS_wLogits.py'
 else:
     args.config = 'configs/faster_rcnn/faster_rcnn_r50_fpn_1x_cocoOS_wLogits.py'
@@ -84,7 +89,25 @@ if samples_per_gpu > 1:
 ###################################################################################################
 ###############Load Dataset########################################################################
 print("Building datasets")
-if args.dataset == 'voc':
+if args.dataset == 'custom':
+    num_classes_dict = {
+        'xml' : 15,
+        'lru1' : 3,
+        'lru1_drone' : 2,
+        'lru1_lander' : 2,
+        'lru1_lru2' : 2,
+    }
+    num_classes = num_classes_dict[suffix] # CS classes
+    if args.subset == 'train':
+        dataset = build_dataset(cfg.data.trainCS)
+    elif args.subset == 'val':
+        dataset = build_dataset(cfg.data.val)
+    elif args.subset == 'test':
+        dataset = build_dataset(cfg.data.testOS)
+    else:
+        print('That subset is not implemented.')
+        exit()
+elif args.dataset == 'voc':
     num_classes = 15
     if args.subset == 'train12':
         dataset = build_dataset(cfg.data.trainCS12)

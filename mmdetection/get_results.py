@@ -19,7 +19,7 @@ from base_dirs import *
 def parse_args():
 	parser = argparse.ArgumentParser(description='Test with Distance')
 	parser.add_argument('dType', default = 'FRCNN', help='FRCNN or retinanet')
-	parser.add_argument('--dataset', default = 'voc', help='voc or coco')
+	parser.add_argument('--dataset', default = 'custom', help='custom, voc or coco')
 	parser.add_argument('--unc', default = 'all', help='how to measure uncertainty? score, entropy, gmm, simple or all?')
 	parser.add_argument('--saveNm', default = None, help='what is the save name of the results?')
 	parser.add_argument('--iouThresh', default = 0.6, type = float, help='what is the cutoff iou for logits used to estimate class centres?')
@@ -34,11 +34,21 @@ args = parse_args()
 results_dir = f'{BASE_RESULTS_FOLDER}/{args.dType}/associated/{args.dataset}'
 
 if args.unc == 'all':
-	uncTypes = ['score', 'entropy', 'simple', 'gmm']
+	uncTypes = ['gmm'] # ['score', 'entropy', 'simple', 'gmm']
 else:
 	uncTypes = [args.unc]
 
-if args.dataset == 'voc':
+if args.dataset == 'custom': ### <<<<<<<<<<---------- hardcoded path---------->>>>>>>>>>
+	suffix = args.saveNm[len("frcnn_GMMDet_Voc_"):] # xml, xml_10c, ardea10
+	num_classes_dict = {
+		'xml': 15,
+		'lru1': 3,
+		'lru1_drone': 2,
+		'lru1_lander': 2,
+		'lru1_lru2': 2,
+	}
+	num_classes = num_classes_dict[suffix] # CS classes
+elif args.dataset == 'voc':
 	num_classes = 15
 elif args.dataset == 'coco':
 	num_classes = 50
@@ -58,17 +68,19 @@ testIoUs = np.asarray(testData['ious'])
 
 #we want results in terms of AUROC, and TPR at 5%, 10% and 20% FPR
 fprRates = [0.05, 0.1, 0.2]
-
+if suffix in ["lru1"]: # Check if object detector trained on openset was used
+	testT = 1
+else:
+	testT = 2
 
 allResults = {}
 for unc in uncTypes:
 	if unc == 'score':
 		#correctly classified detections of known objects
 		tpKnown = testScores[testType == 0]
-		
-		#open-set errors
-		fpUnknown = testScores[testType == 2]
 
+		#open-set errors
+		fpUnknown = testScores[testType == testT]
 	
 	elif unc == 'entropy':
 		#faster r-cnn uses softmax
@@ -87,7 +99,7 @@ for unc in uncTypes:
 
 		#for entropy, a higher score means greater uncertainty. therefore we use the negative entropy, so that a lower score means greater uncertainty
 		tpKnown = -entropy[testType == 0]
-		fpUnknown = -entropy[testType == 2]
+		fpUnknown = -entropy[testType == testT]
 
 	#load in training and val logits for distance-based measures
 	elif unc == 'simple' or unc == 'gmm':
@@ -135,12 +147,17 @@ for unc in uncTypes:
 		
 		gmmScores = gmm_uncertainty(testLogits, gmms)
 		tpKnown = gmmScores[testType == 0]
-		fpUnknown = gmmScores[testType == 2]
+		fpUnknown = gmmScores[testType == testT]
+		testTN = gmmScores[testType == 1]
+		print("testTP:", len(tpKnown))
+		print("testFP:", len(fpUnknown))
+		print("testTN", len(testTN))
 
 	else:
 		print('That uncertainty measure has not been implemented. Check the args.unc input argument.')
 		exit()
 
+	# Fixed performance metrics
 	scoreResults = summarise_performance(tpKnown, fpUnknown, fprRates, True, args.saveNm + f' with uncertainty {unc}')
 	allResults[unc] = scoreResults
 
