@@ -32,7 +32,7 @@ def gmm_uncertainty(allLogits, gmms):
     for jj, inty in enumerate(sI):
         clsScores = []
         ls = allLogits[inty:eI[jj]]
-
+        
         #find logit log likelihood for every class GMM
         for clsIdx, gmm in enumerate(gmms):
             if gmm == None:

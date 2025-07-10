@@ -144,6 +144,9 @@ def create_yolo_imagesets(dataset_dir: Path, classes: List):
 
         # Write data{suffix}.yaml in dataset_dir
         yaml_path = dataset_dir / f"data{suffix}.yaml"
+        if len(suffix) > 0 and len(suffix[3:]) > 0:
+            classes.remove(suffix[3:])
+            classes.append(suffix[3:])
         yaml_path.write_text(
             f"train: {yolo_dir / 'train.txt'}\n"
             f"val: {yolo_dir / 'val.txt'}\n\n"

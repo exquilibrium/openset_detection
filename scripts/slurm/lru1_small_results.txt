@@ -19,27 +19,30 @@ Results for Method: frcnn_GMMDet_Voc_lru1_lru2 with uncertainty gmm
 ------ TPR at 5.9FPR: 62.9
 ------ TPR at 17.6FPR: 71.4
 
+correct
 Results for Method: frcnn_GMMDet_Voc_lru1 with uncertainty gmm
 ------ AUROC: 1.0
 ------ TPR at 0.0FPR: 0.0
 ------ TPR at 0.0FPR: 0.0
 ------ TPR at 0.0FPR: 0.0
 Results for Method: frcnn_GMMDet_Voc_lru1_drone with uncertainty gmm
------- AUROC: 0.979
------- TPR at 0.0FPR: 92.6
------- TPR at 0.0FPR: 92.6
------- TPR at 20.0FPR: 99.2
+------ AUROC: 0.987
+------ TPR at 0.0FPR: 92.8
+------ TPR at 5.6FPR: 96.8
+------ TPR at 16.7FPR: 97.6
 Results for Method: frcnn_GMMDet_Voc_lru1_lander with uncertainty gmm
------- AUROC: 0.749
------- TPR at 4.2FPR: 41.2
------- TPR at 8.3FPR: 47.1
------- TPR at 16.7FPR: 52.9
+------ AUROC: 0.597
+------ TPR at 4.3FPR: 40.5
+------ TPR at 4.3FPR: 40.5
+------ TPR at 4.3FPR: 40.5
 Results for Method: frcnn_GMMDet_Voc_lru1_lru2 with uncertainty gmm
------- AUROC: 0.927
------- TPR at 4.3FPR: 77.1
------- TPR at 8.7FPR: 84.3
------- TPR at 17.4FPR: 88.6
+------ AUROC: 0.839
+------ TPR at 0.0FPR: 70.4
+------ TPR at 7.7FPR: 73.2
+------ TPR at 15.4FPR: 76.1
 
+
+custom method
 Results for Method: frcnn_GMMDet_Voc_lru1 with uncertainty gmm
 ------ AUROC: 0.878
 ------ TPR at 0.0FPR: 87.8
@@ -60,4 +63,26 @@ Results for Method: frcnn_GMMDet_Voc_lru1_lru2 with uncertainty gmm
 ------ TPR at 0.0FPR: 65.7
 ------ TPR at 0.0FPR: 65.7
 ------ TPR at 11.1FPR: 75.7
+
+
+Custom
+Results for Method: frcnn_GMMDet_Voc_xml with uncertainty gmm
+------ AUROC: 0.849
+------ TPR at 4.7FPR: 53.6
+------ TPR at 9.3FPR: 65.5
+------ TPR at 19.4FPR: 72.6
+
+
+Results for Method: frcnn_GMMDet_Voc_xml_yolo with uncertainty gmm
+------ AUROC: 0.708
+------ TPR at 4.2FPR: 18.1
+------ TPR at 9.9FPR: 32.3
+------ TPR at 19.7FPR: 47.4
+
+Results for Method: frcnn_GMMDet_Voc_xml_yolo with uncertainty gmm
+------ AUROC: 0.755
+------ TPR at 4.2FPR: 37.3
+------ TPR at 9.9FPR: 48.0
+------ TPR at 19.7FPR: 54.8
+
 

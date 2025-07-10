@@ -24,31 +24,48 @@ def fit_gmms(logits, labels, ious, confs, scoreThresh, iouThresh, num_classes, c
     return gmms
 
 def gmm_uncertainty(allLogits, gmms):
+#    gmmScores = []
+#    #test all data in 10 batches - not too slow, doesn't overload cpu
+#    intervals = np.ceil(len(allLogits)/10)
+#    sI = [int(i*intervals) for i in range(10)]
+#    eI = [int(s+intervals) for s in sI]
+#    for jj, inty in enumerate(sI):
+#        clsScores = []
+#        ls = allLogits[inty:eI[jj]]
+#
+#        #find logit log likelihood for every class GMM
+#        for clsIdx, gmm in enumerate(gmms):
+#            if gmm == None:
+#                continue
+#
+#            gmmLL = gmm.score_samples(ls)
+#            clsScores += [gmmLL]
+#
+#        clsScores = np.array(clsScores)
+#
+#        #we use the maximum likelihood to reperesent uncertainty
+#        maxScore =  np.max(clsScores, axis = 0)
+#        gmmScores += list(maxScore)
+#        
+#    gmmScores = np.array(gmmScores)
+#    return gmmScores
+
+# Fixes empty batches
     gmmScores = []
-    #test all data in 10 batches - not too slow, doesn't overload cpu
-    intervals = np.ceil(len(allLogits)/10)
-    sI = [int(i*intervals) for i in range(10)]
-    eI = [int(s+intervals) for s in sI]
-    for jj, inty in enumerate(sI):
+    batches = np.array_split(allLogits, 10)
+    for ls in batches:
+        if len(ls) == 0:
+            continue
         clsScores = []
-        ls = allLogits[inty:eI[jj]]
-
-        #find logit log likelihood for every class GMM
         for clsIdx, gmm in enumerate(gmms):
-            if gmm == None:
+            if gmm is None:
                 continue
-
             gmmLL = gmm.score_samples(ls)
-            clsScores += [gmmLL]
-
+            clsScores.append(gmmLL)
         clsScores = np.array(clsScores)
-
-        #we use the maximum likelihood to reperesent uncertainty
-        maxScore =  np.max(clsScores, axis = 0)
-        gmmScores += list(maxScore)
-        
-    gmmScores = np.array(gmmScores)
-    return gmmScores
+        maxScore = np.max(clsScores, axis=0)
+        gmmScores.extend(maxScore)
+    return np.array(gmmScores)
 
 
 				

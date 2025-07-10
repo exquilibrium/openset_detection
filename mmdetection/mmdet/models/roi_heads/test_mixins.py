@@ -99,6 +99,14 @@ class BBoxTestMixin:
         cls_score = bbox_results['cls_score']
         bbox_pred = bbox_results['bbox_pred']
 
+        # After cls_score, bbox_pred extraction
+        bbox_feats = bbox_results['bbox_feats']
+
+        # Save Mahalanobis++ features and predicted labels
+        with torch.no_grad():
+            self.saved_roi_feats = bbox_feats.detach().cpu()
+            self.saved_pred_labels = cls_score.argmax(dim=-1).detach().cpu()
+
         # Recover the batch dimension
         rois = rois.reshape(batch_size, num_proposals_per_img, rois.size(-1))
         cls_score = cls_score.reshape(batch_size, num_proposals_per_img,

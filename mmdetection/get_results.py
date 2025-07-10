@@ -39,7 +39,9 @@ else:
 	uncTypes = [args.unc]
 
 if args.dataset == 'custom': ### <<<<<<<<<<---------- hardcoded path---------->>>>>>>>>>
-	suffix = args.saveNm[len("frcnn_GMMDet_Voc_"):] # xml, xml_10c, ardea10
+	suffix = args.saveNm[len("frcnn_GMMDet_Voc_"):] # custom -> xml, lru1 | yolo -> xml_yolo, lru1_yolo
+	if args.dType == 'YOLOv8':
+		suffix = suffix[:-len("_yolo")] # xml, lru1
 	num_classes_dict = {
 		'xml': 15,
 		'lru1': 3,
@@ -69,6 +71,7 @@ testIoUs = np.asarray(testData['ious'])
 #we want results in terms of AUROC, and TPR at 5%, 10% and 20% FPR
 fprRates = [0.05, 0.1, 0.2]
 if suffix in ["lru1"]: # Check if object detector trained on openset was used
+	print("### Warning: Object detector trained on full dataset. TestTN = TestFP!!! ###")
 	testT = 1
 else:
 	testT = 2
@@ -128,7 +131,7 @@ for unc in uncTypes:
 				print('Finding optimal component number for the GMM')
 				for nComp in tqdm.tqdm(nComps, total = len(nComps)):
 					gmms = fit_gmms(trainLogits, trainLabels, trainIoUs, trainScores, args.scoreThresh, args.iouThresh, num_classes, components = nComp)
-			
+
 					gmmScores = gmm_uncertainty(valLogits, gmms)
 					valTP = gmmScores[valTypes == 0]
 					valFP = gmmScores[valTypes == 1]

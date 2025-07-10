@@ -35,8 +35,9 @@ test_pipeline = [
 ]
 
 CS_suffix = "_CS_drone"
-voc_os_classes=["drone", "lander", "lru2"] # !!! Use custom data association
-#voc_os_classes=["lander", "lru2", "drone"] # !!! Use normal get_results
+#voc_os_classes=["drone", "lander", "lru2"] # !!! Use custom data association
+# This is the correct way, but Yolov8 needs to be reindexed before training.
+voc_os_classes=["lander", "lru2", "drone"] # !!! Use normal get_results
 voc_cs_classes=["lander", "lru2"]
 
 data = dict(

@@ -196,7 +196,7 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
             continue
 
         bboxes = dets[:, :4]
-        dists = dets[:, 5:]
+        dists = dets[:, 5:-1]  # Excludes the last column (background logit)
         scores = dets[:, 4]
         scoresT = np.expand_dims(scores, axis=1)
 

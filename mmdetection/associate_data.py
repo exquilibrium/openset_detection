@@ -20,6 +20,7 @@ import cv2
 import tqdm
 import os
 import sys
+import pprint
 
 currentdir = os.path.dirname(os.path.realpath(__file__))
 parentdir = os.path.dirname(currentdir)
@@ -45,7 +46,9 @@ args = parse_args()
 ##############Setup Config file ###################################################################
 #load the config file for the model that will also return logits
 if args.dataset == 'custom':
-	suffix = args.saveNm[len("frcnn_GMMDet_Voc_"):] # xml, xml_10c, ardea10
+	suffix = args.saveNm[len("frcnn_GMMDet_Voc_"):] # custom -> xml, lru1 | yolo -> xml_yolo, lru1_yolo
+	if args.dType == 'YOLOv8':
+		suffix = suffix[:-len("_yolo")] # xml, lru1
 	args.config = f'configs/faster_rcnn/faster_rcnn_r50_fpn_1x_voc0712OS_wLogits_{suffix}.py'  ### <<<<<<<<<<---------- hardcoded path ---------->>>>>>>>>>
 	num_classes_dict = {
 		'xml': 15,
@@ -122,7 +125,7 @@ def iouCalc(boxes1, boxes2):
 	return run(boxes1, boxes2)
 
 #used to associate detections either as background, known class correctly predicted, known class incorrectly predicted, unknown class
-def associate_detections(dataHolder, dets, gt, clsCutoff = 15):
+def associate_detections(dataHolder, dets, gt, clsCutoff, imName):
 		gtBoxes = gt['bboxes']
 		gtLabels = gt['labels']
 		detPredict = dets['predictions']
@@ -130,7 +133,7 @@ def associate_detections(dataHolder, dets, gt, clsCutoff = 15):
 		detScores = dets['scores']
 		detLogits = dets['logits']
 		
-
+		# Class cutoff used to be background class, but is removed in test_data
 		knownBoxes = gtBoxes[gtLabels < clsCutoff]
 		knownLabels = gtLabels[gtLabels < clsCutoff]
 		unknownBoxes = gtBoxes[gtLabels >= clsCutoff] # Class cutoff needs to include clsCutoff
@@ -331,6 +334,10 @@ if args.train:
 
 		allTrainDets = [trainDets]
 
+	pairs = []
+	count = 0
+	count2 = 0
+	count3 = 0
 	for tIdx, trainDataset in enumerate(trainDatasets):
 		trainDets = allTrainDets[tIdx]
 		lenDataset = len(trainDataset)
@@ -379,6 +386,12 @@ if args.train:
 				trueClasses = gtLabels[mask]
 				gtMatches = np.where(guess == trueClasses)[0]
 
+				if len(trueClasses) == 1:
+					count2 += 1
+				elif len(trueClasses) > 1:
+					count3 += 1
+					pairs.append((guess, trueClasses))
+
 				if len(gtMatches) > 0:
 					allLogits += [detLogits[detIdx].tolist()]
 					allLabels += [int(guess)]
@@ -386,6 +399,13 @@ if args.train:
 
 					maxIoU = np.max(iou[mask][gtMatches])
 					allIoUs += [maxIoU]
+
+					count+=1
+
+	#pprint.pprint(pairs)
+	print(count) # Matches
+	print(count2) # Detections
+	print(count3) # Multi Dets
 			
 	allLogits = list(allLogits)
 	allLabels = list(allLabels)
@@ -463,8 +483,8 @@ for typIdx, nm in enumerate(['val', 'test']):
 		detPredict = detPredict[mask]
 
 		allDetsIm = {'predictions': detPredict, 'scores': detScores, 'boxes': detBoxes, 'logits': detLogits}
-		#associate detections to objects
-		allData = associate_detections(allData, allDetsIm, gtData, clsCutoff = num_classes)
+		#associate detections to objects                           #clsCutoff = num_classes
+		allData = associate_detections(allData, allDetsIm, gtData, num_classes, imName) # imName for debug
 
 	sub_save_dir = save_dir+f'/{nm}/'
 	if not os.path.exists(sub_save_dir):

@@ -18,22 +18,20 @@ python "$SCRIPT_DIR/create_voc0712.py" $DATASET_DIR
 python "$SCRIPT_DIR/create_balanced_voc_subset.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712" --adjust int3 --train_split 0.6 --val_split 0.2 --test_split 0.2
 
 # Create closed-set VOC dataset
-python3 "$SCRIPT_DIR/create_voc_closedset.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712_small" "pottedplant,sheep,sofa,train,tvmonitor"
+ython3 "$SCRIPT_DIR/create_voc_closedset.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712_small" "pottedplant,sheep,sofa,train,tvmonitor"
 
-# Create train, val, test splits
-python3 "$SCRIPT_DIR/create_yolo_dataset.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712_small"
-
-# Utils
-python3 "$SCRIPT_DIR/create_coheatmap.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712_small"
-
-# Cleanup
+# Renaming
 rm -rf "${DATASET_DIR}/VOCdevkit_xml/VOC0712"
 mv "${DATASET_DIR}/VOCdevkit_xml/VOC0712_small" "${DATASET_DIR}/VOCdevkit_xml/VOC0712"
 mv "${DATASET_DIR}/VOCdevkit_xml/VOC0712/data_CS_pottedplant,sheep,sofa,train,tvmonitor.yaml" \
    "${DATASET_DIR}/VOCdevkit_xml/VOC0712/data_CS.yaml"
 mv "${DATASET_DIR}/VOCdevkit_xml/VOC0712/ImageSets/Main_CS_pottedplant,sheep,sofa,train,tvmonitor" \
    "${DATASET_DIR}/VOCdevkit_xml/VOC0712/ImageSets/Main_CS"
-mv "${DATASET_DIR}/VOCdevkit_xml/VOC0712/ImageSets/YOLO_CS_pottedplant,sheep,sofa,train,tvmonitor" \
-   "${DATASET_DIR}/VOCdevkit_xml/VOC0712/ImageSets/YOLO_CS"
+
+# Create yolo dataset
+python3 "$SCRIPT_DIR/create_yolo_dataset.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712"
+
+# Utils
+python3 "$SCRIPT_DIR/create_coheatmap.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712"
 
 echo "Data preprocessing complete!"
