@@ -1,6 +1,7 @@
 *.pyc
 *.json
 *.zip
+.ipynb_checkpoints
 
 mmdetection/workDirs/
 mmdetection/weights/
