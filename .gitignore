@@ -1,9 +1,9 @@
-datasets/data
 *.pyc
-.ipynb_checkpoints
 *.json
-mmdetection/test.sh
-mmdetection/train.sh
-mmdetection/workDirs
-mmdetection/weights
 *.zip
+
+mmdetection/workDirs/
+mmdetection/weights/
+
+results/
+scripts/YOLOv8/training/runs/
