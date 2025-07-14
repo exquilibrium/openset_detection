@@ -1,5 +1,0 @@
-Testing with base weights: frcnnCEwAnchorVocCS_lru1
-Save name: frcnn_GMMDet_Voc_lru1
-Dataset: custom
-Testing data
-slurmstepd: error: *** JOB 282174 ON rmc-gpu04 CANCELLED AT 2025-06-11T12:03:12 ***
