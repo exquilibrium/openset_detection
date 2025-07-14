@@ -16,6 +16,7 @@ from mmdet.apis import multi_gpu_test, single_gpu_test
 from mmdet.datasets import (build_dataloader, build_dataset,
                             replace_ImageToTensor)
 from mmdet.models import build_detector
+from torchvision.ops import nms  # alternative if using TorchVision
 
 import numpy as np
 import tqdm
@@ -31,7 +32,7 @@ from base_dirs import *
 def parse_args():
     parser = argparse.ArgumentParser(description='Test the data and save the raw detections')
     parser.add_argument('--dataset', default = 'custom', help='custom, voc or coco')
-    parser.add_argument('--subset', default = None, help='train or val or test')
+    parser.add_argument('--subset', default = None, help='train, val, test, testOOD (Maha++)')
     parser.add_argument('--dir', default = None, help='directory of object detector weights')
     parser.add_argument('--checkpoint', default = 'latest.pth', help='what is the name of the object detector weights')
     parser.add_argument('--saveNm', default = None, help='name to save results as')
@@ -104,6 +105,8 @@ if args.dataset == 'custom':
         dataset = build_dataset(cfg.data.val)
     elif args.subset == 'test':
         dataset = build_dataset(cfg.data.testOS)
+    elif args.subset == 'testOOD':
+        dataset = build_dataset(cfg.data.testOOD)
     else:
         print('That subset is not implemented.')
         exit()
@@ -176,6 +179,12 @@ num_images = len(data_loader.dataset)
 score_threshold = 0.2 # only detections with a max softmax above this score are considered valid
 total = 0
 allResults = {}
+# Mahalanobis++
+feature_id_train = []
+train_labels = []
+feature_id_val = []
+feature_ood = []
+debug_print = False
 for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):   
     imName = data_loader.dataset.data_infos[i]['filename']
     
@@ -187,6 +196,95 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
     
     with torch.no_grad():
         result = model(return_loss = False, rescale=True, **data)[0]
+
+        # Mahalanobis++: extract post-NMS RoI features and metadata
+        feats = model.module.roi_head.saved_roi_feats                # [N_all, C, H, W]
+        labels = model.module.roi_head.saved_pred_labels             # [N_all]
+        scores = model.module.roi_head.saved_pred_scores             # [N_all]
+        rois = model.module.roi_head.saved_rois                      # [N_all, 5]
+
+        if debug_print:
+            print(f"{imName}")
+            #print(f"Total feats shape: {feats.shape}") # [1000, 256, 7, 7]
+            #print(f"Total labels shape: {labels.shape}")
+            print(f"Selected feats shape: {final_feats.shape}") # [N, 256, 7, 7]
+            print(f"Selected labels shape: {final_labels}")
+
+        # --- Mahalanobis++: extract ID train val features from GT-matched RoIs and confident TP detections ---
+        if args.subset in ['train', 'val']:
+            # Filter detections by score
+            keep_score = scores > 0.5
+            if keep_score.sum() == 0:
+                continue
+
+            filtered_feats  = feats[keep_score]               # [N_filtered, C, 7, 7], C = 256
+            filtered_boxes  = rois[keep_score, 1:5]           # [N_filtered, 4]
+            filtered_labels = labels[keep_score]              # [1,N] last label is background
+
+            # Load ground-truth boxes and labels
+            gtData = data_loader.dataset.get_ann_info(i)
+            gt_boxes = torch.tensor(gtData['bboxes'], dtype=torch.float32)    # [M, 4]
+            gt_labels = torch.tensor(gtData['labels'], dtype=torch.int64)     # [M]
+            if gt_boxes.numel() == 0:
+                continue  # Skip if no GT boxes
+
+            # Match each GT box to the best RoI via IoU
+            img_meta = data['img_metas'][0].data[0][0]  # Rescale boxes
+            scale_factor = img_meta['scale_factor']
+            gt_boxes = gt_boxes * torch.tensor(scale_factor, dtype=torch.float32)
+
+            from mmdet.core.bbox.iou_calculators import bbox_overlaps
+            ious = bbox_overlaps(gt_boxes, filtered_boxes)     # [M, N]
+
+            # For each GT box, find best-matching RoI
+            matched_feats = []
+            matched_labels = []
+            
+            for gt_idx in range(len(gt_boxes)):
+                gt_label = gt_labels[gt_idx]
+                iou_row = ious[gt_idx]                            # IoUs to all preds
+                match_mask = (iou_row >= 0.7) & (filtered_labels == gt_label)
+
+                if match_mask.sum() == 0:
+                    continue  # no valid matching detection
+
+                best_idx = iou_row[match_mask].argmax()
+                selected_feat = filtered_feats[match_mask][best_idx]  # [C, 7, 7] 
+                matched_feats.append(selected_feat)
+                matched_labels.append(gt_label)
+
+            if len(matched_feats) == 0:
+                continue
+
+            pooled_feats = torch.stack(matched_feats).mean(dim=[2, 3])  # [K, C]
+
+            if args.subset == 'train':
+                feature_id_train.append(pooled_feats.cpu().numpy())
+                #print(np.shape(feature_id_train[0]))
+                train_labels.append(torch.tensor(matched_labels).cpu().numpy())
+            else: # val
+                feature_id_val.append(pooled_feats.cpu().numpy())
+
+        # --- Mahalanobis++: extract OOD features from high-confidence test boxes ---
+        elif args.subset == 'testOOD':
+            # Filter by score
+            keep_score = scores > 0.5
+            if keep_score.sum() == 0:
+                continue
+
+            filtered_feats = feats[keep_score]            # [K, C, 7, 7]
+            filtered_boxes = rois[keep_score, 1:5]        # [K, 4]
+            filtered_scores = scores[keep_score]          # [K]
+
+            # Apply NMS (IoU threshold 0.5)
+            keep_inds = nms(filtered_boxes, filtered_scores, iou_threshold=0.5)
+
+            # Keep only NMS-surviving features
+            kept_feats = filtered_feats[keep_inds]              # [M, C, 7, 7]
+            pooled_feats = kept_feats.mean(dim=[2, 3])          # [M, C]
+
+            # Append to global list
+            feature_ood.append(pooled_feats.cpu().numpy())
     
     #collect results from each class and concatenate into a list of all the results
     for j in range(np.shape(result)[0]):
@@ -229,15 +327,30 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
 
     allResults[imName] = detections.tolist()
 
-#save results
-jsonRes = json.dumps(allResults)
+# Save raw detection results (existing logic)
+if args.subset in ['train', 'val', 'test']:
+    jsonRes = json.dumps(allResults)
+    save_dir = f'{BASE_RESULTS_FOLDER}/FRCNN/raw/{args.dataset}/{args.subset}'
+    os.makedirs(save_dir, exist_ok=True) #check folders exist, if not, create it
 
-save_dir = f'{BASE_RESULTS_FOLDER}/FRCNN/raw/{args.dataset}/{args.subset}'
-#check folders exist, if not, create it
-if not os.path.exists(save_dir):
-    os.makedirs(save_dir)
+    with open(f'{save_dir}/{args.saveNm}.json', 'w') as f:
+        f.write(jsonRes)
 
-f = open('{}/{}.json'.format(save_dir, args.saveNm), 'w')
-f.write(jsonRes)
-f.close()
+# === Mahalanobis++ feature saving ===
+if args.subset in ['train', 'val', 'testOOD']:
+    save_dir = f'{BASE_RESULTS_FOLDER}/FRCNN/mahalanobis/{args.dataset}/{args.subset}'
+    os.makedirs(save_dir, exist_ok=True)
+
+    if args.subset == 'train':
+        print(f"Mahalanobis-Train: {len(feature_id_train)}")
+        print(f"Mahalanobis-TrainLabels: {len(train_labels)}")
+        np.save(os.path.join(save_dir, f'{args.saveNm}_feature_id_train.npy'), np.concatenate(feature_id_train, axis=0))
+        np.save(os.path.join(save_dir, f'{args.saveNm}_train_labels.npy'), np.concatenate(train_labels, axis=0))
+    elif args.subset == 'val':
+        print(f"Mahalanobis-Val: {len(feature_id_val)}")
+        np.save(os.path.join(save_dir, f'{args.saveNm}_feature_id_val.npy'), np.concatenate(feature_id_val, axis=0))
+    elif args.subset == 'testOOD':
+        print(f"Mahalanobis-OOD: {len(feature_ood)}")
+        np.save(os.path.join(save_dir, f'{args.saveNm}_feature_ood.npy'), np.concatenate(feature_ood, axis=0))
+
 

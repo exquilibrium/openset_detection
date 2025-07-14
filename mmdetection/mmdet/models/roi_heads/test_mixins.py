@@ -95,6 +95,7 @@ class BBoxTestMixin:
 
         # Eliminate the batch dimension
         rois = rois.view(-1, 5)
+        self.saved_rois = rois.detach().cpu()  # <-- Mahalanobis++: Save all RoIs (per image)
         bbox_results = self._bbox_forward(x, rois)
         cls_score = bbox_results['cls_score']
         bbox_pred = bbox_results['bbox_pred']
@@ -104,8 +105,13 @@ class BBoxTestMixin:
 
         # Save Mahalanobis++ features and predicted labels
         with torch.no_grad():
-            self.saved_roi_feats = bbox_feats.detach().cpu()
-            self.saved_pred_labels = cls_score.argmax(dim=-1).detach().cpu()
+            self.saved_roi_feats = bbox_feats.detach().cpu()  # <-- Mahalanobis++
+            self.saved_pred_labels = cls_score.argmax(dim=-1).detach().cpu()  # <-- Mahalanobis++
+
+            # Save Mahalanobis++ softmax scores (excluding background)
+            probs = cls_score.softmax(dim=-1)[:, :-1]
+            max_scores, _ = probs.max(dim=1)
+            self.saved_pred_scores = max_scores.detach().cpu()
 
         # Recover the batch dimension
         rois = rois.reshape(batch_size, num_proposals_per_img, rois.size(-1))

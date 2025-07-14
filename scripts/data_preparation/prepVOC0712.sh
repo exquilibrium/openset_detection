@@ -31,6 +31,9 @@ mv "${DATASET_DIR}/VOCdevkit_xml/VOC0712/ImageSets/Main_CS_pottedplant,sheep,sof
 # Create yolo dataset
 python3 "$SCRIPT_DIR/create_yolo_dataset.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712"
 
+# Create OOD set for Mahalanobis
+python create_oodset.py "${DATASET_DIR}VOCdevkit_xml/VOC0712/" "pottedplant,sheep,sofa,train,tvmonitor" --shortname
+
 # Utils
 python3 "$SCRIPT_DIR/create_coheatmap.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712"
 

@@ -78,7 +78,7 @@ data = dict(
     testOOD=dict(
         type=dataset_type,
         classes=voc_os_classes, # OOD only
-        ann_file=data_root + 'VOC0712/ImageSets/Main/test_ood.txt',
+        ann_file=data_root + 'VOC0712/ImageSets/Main_CS/test_ood.txt',
         img_prefix=data_root + 'VOC0712/',
         pipeline=test_pipeline))
 evaluation = dict(interval=1, metric='mAP')

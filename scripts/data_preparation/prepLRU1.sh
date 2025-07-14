@@ -24,6 +24,11 @@ python "$SCRIPT_DIR/create_voc_closedset.py" "$DATASET_DIR" "lru2"
 # Create YOLO dataset splits
 python "$SCRIPT_DIR/create_yolo_dataset.py" "$DATASET_DIR"
 
+# Create OOD set for Mahalanobis
+python create_oodset.py "$DATASET_DIR" "drone"
+python create_oodset.py "$DATASET_DIR" "lander"
+python create_oodset.py "$DATASET_DIR" "lru2"
+
 # Create co-heatmap
 python "$SCRIPT_DIR/create_coheatmap.py" "$DATASET_DIR"
 

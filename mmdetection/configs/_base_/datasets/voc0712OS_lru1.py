@@ -75,5 +75,11 @@ data = dict(
         classes=voc_os_classes, # OS
         ann_file=data_root + '/ImageSets/Main/test.txt',
         img_prefix=data_root,
+        pipeline=test_pipeline),
+    testOOD=dict(
+        type=dataset_type,
+        classes=voc_os_classes, # CS
+        ann_file=data_root + f'/ImageSets/Main{CS_suffix}/test.txt',
+        img_prefix=data_root,
         pipeline=test_pipeline))
 evaluation = dict(interval=1, metric='mAP')
