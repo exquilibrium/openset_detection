@@ -5,8 +5,8 @@
 # How to use: Set DATASET_DIR to folder path containing VOCdevkit with VOC2007, VOC2012
 
 # === SET PATH TO DATASET DIRECTORY!!! ===
-#DATASET_DIR="/media/chen/76AECF8EAECF4579/data"
-DATASET_DIR="/volume/hot_storage/slurm_data/chen_le"
+BASE_DATA_FOLDER=$(python3 -c "import sys; sys.path.insert(0, '../..'); import base_dirs; print(base_dirs.BASE_DATA_FOLDER)")
+DATASET_DIR="${BASE_DATA_FOLDER}"
 # === SET PATH TO DATASET DIRECTORY!!! ===
 
 # Path to script directory

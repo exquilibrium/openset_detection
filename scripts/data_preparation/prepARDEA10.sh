@@ -1,12 +1,20 @@
 #!/bin/bash
 
-# === SET PATH TO DATASET DIRECTORY!!! ===
-#DATASET_DIR="/media/chen/76AECF8EAECF4579/data/lru1_all"
-DATASET_DIR="/volume/hot_storage/slurm_data/chen_le/ARCHES/ardea10_all"
+# === SET PATH TO DATASET DIRECTORY!!! ===\
+#SOURCE_DIR=/home_local/chen_le/ARCHES
+SOURCE_DIR=/media/chen/76AECF8EAECF4579/ARCHES
+BASE_DATA_FOLDER=$(python3 -c "import sys; sys.path.insert(0, '../..'); import base_dirs; print(base_dirs.BASE_DATA_FOLDER)")
+DATASET_DIR="${BASE_DATA_FOLDER}/ardea10_all"
 # === SET PATH TO DATASET DIRECTORY!!! ===
 
 # Path to script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Import data
+python "$SCRIPT_DIR/import_data.py" "${SOURCE_DIR}/ardea10_run01_labels" "${DATASET_DIR}"
+python "$SCRIPT_DIR/import_data.py" "${SOURCE_DIR}/ardea10_run02_labels" "${DATASET_DIR}"
+python "$SCRIPT_DIR/import_data.py" "${SOURCE_DIR}/ardea10_run04_labels" "${DATASET_DIR}"
+python "$SCRIPT_DIR/import_data.py" "${SOURCE_DIR}/ardea10_run05_labels" "${DATASET_DIR}"
 
 # Create VOC dataset
 python "$SCRIPT_DIR/create_voc_dataset.py" "$DATASET_DIR" --train_split 0.6 --val_split 0.2 --test_split 0.2

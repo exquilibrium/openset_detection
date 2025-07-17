@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# Adjust base_dirs.py
-#PROJECT_ROOT="/home/chen/openset_detection/scripts/YOLOv8"
-PROJECT_ROOT="/home/chen_le/openset_detection/scripts/YOLOv8"
+# Path to scripts/FRCNN folder
+PROJECT_ROOT="$(realpath "$(dirname "${BASH_SOURCE[0]}")/../FRCNN")"
 
 # Run training script
 bash "$PROJECT_ROOT/training/train_yolo_ardea10.sh"

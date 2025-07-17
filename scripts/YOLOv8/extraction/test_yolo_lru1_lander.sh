@@ -1,21 +1,23 @@
-#!/bin/bash 
+#!/bin/sh
+
 cd ../../mmdetection
 
-# === SET PATH TO DATASET DIRECTORY!!! ===
-#MODEL_PATH="/home/chen/openset_detection/scripts/YOLOv8/training/runs/detect/train_lru1_lander/weights/best.pt"
-#TRAIN_SET="/media/chen/76AECF8EAECF4579/data/lru1_all/ImageSets/YOLO_CS_lander/train.txt"
-#VAL_SET="/media/chen/76AECF8EAECF4579/data/lru1_all/ImageSets/YOLO_CS_lander/val.txt"
-#TEST_SET="/media/chen/76AECF8EAECF4579/data/lru1_all/ImageSets/YOLO/test.txt"
-#OOD_SET="/media/chen/76AECF8EAECF4579/data/lru1_all/ImageSets/YOLO_CS_lander/test_ood.txt"
+# Get project root: openset_detection/
+PROJECT_ROOT=$(realpath "$(dirname "$0")/..")
+BASE_DATA_FOLDER=$(python3 -c "import sys; sys.path.insert(0, '${PROJECT_ROOT}'); import base_dirs; print(base_dirs.BASE_DATA_FOLDER)")
 
-MODEL_PATH="/home/chen_le/openset_detection/scripts/YOLOv8/training/runs/detect/train_lru1_lander/weights/best.pt"
-TRAIN_SET="/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/YOLO_CS_lander/train.txt"
-VAL_SET="/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/YOLO_CS_lander/val.txt"
-TEST_SET="/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/YOLO/test.txt"
-OOD_SET="/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/YOLO_CS_lander/test_ood.txt"
+# === SET PATH TO DATASET DIRECTORY!!! ===
+DS=lru1
+CS=lander
+
+MODEL_PATH="${PROJECT_ROOT}/scripts/YOLOv8/training/runs/detect/train_${DS}_${CS}/weights/best.pt"
+TRAIN_SET="${BASES_DATA_FOLDER}/lru1_all/ImageSets/YOLO_CS_${CS}/train.txt"
+VAL_SET="${BASES_DATA_FOLDER}/lru1_all/ImageSets/YOLO_CS_${CS}/val.txt"
+TEST_SET="${BASES_DATA_FOLDER}/lru1_all/ImageSets/YOLO/test.txt"
+OOD_SET="${BASES_DATA_FOLDER}/lru1_all/ImageSets/YOLO_CS_${CS}/test_ood.txt"
 # === SET PATH TO DATASET DIRECTORY!!! ===
 
 NUM_CLSS="2"
-SAVE_NAME="frcnn_GMMDet_Voc_lru1_lander_yolo"
+SAVE_NAME="frcnn_GMMDet_Voc_${DS}_${CS}_yolo"
 
 ./test_standard_yolo.sh $MODEL_PATH $NUM_CLSS $SAVE_NAME $TRAIN_SET $VAL_SET $TEST_SET $OOD_SET

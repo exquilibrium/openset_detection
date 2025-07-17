@@ -2,14 +2,11 @@
 
 cd ../YOLOv8/training
 
-# Sometimes slurm just fails, try running a few times
-nvidia-smi
+BASE_DATA_FOLDER=$(python3 -c "import sys; sys.path.insert(0, '../../..'); import base_dirs; print(base_dirs.BASE_DATA_FOLDER)")
 
-#data="/volume/hot_storage/slurm_data/chen_le/ARCHES/ardea10_all/data.yaml" \
-#data="/media/chen/76AECF8EAECF4579/data/ardea10_all/data.yaml" \
 yolo detect train \
   model=yolov8n.pt \
-  data="/volume/hot_storage/slurm_data/chen_le/ARCHES/ardea10_all/data.yaml" \
+  data="${BASE_DATA_FOLDER}/ardea10_all/data.yaml" \
   epochs=50 \
   imgsz=640 \
   amp=False \

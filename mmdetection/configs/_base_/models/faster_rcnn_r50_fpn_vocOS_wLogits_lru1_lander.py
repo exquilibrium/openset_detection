@@ -1,6 +1,8 @@
+from base_dirs import BASE_PRETRAINED_FOLDER
+
 model = dict(
     type='FasterRCNN',
-    pretrained='/home/chen_le/openset_detection/pretrained/resnet50-0676ba61.pth',
+    pretrained=BASE_PRETRAINED_FOLDER + '/resnet50-0676ba61.pth',
     backbone=dict(
         type='ResNet',
         depth=50,

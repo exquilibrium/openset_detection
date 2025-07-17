@@ -10,7 +10,7 @@ def parse_voc_annotations(annotations_dir):
     combo_class_counter = Counter()
 
     xml_files = [f for f in os.listdir(annotations_dir) if f.endswith(".xml")]
-
+    total = 0
     for filename in tqdm(xml_files, desc="Parsing annotations"):
         filepath = os.path.join(annotations_dir, filename)
         tree = ET.parse(filepath)
@@ -19,6 +19,7 @@ def parse_voc_annotations(annotations_dir):
         objects = root.findall("object")
         if not objects:
             continue
+        total += 1
 
         class_names = sorted({obj.find("name").text.strip() for obj in objects})
         for name in class_names:
@@ -31,6 +32,7 @@ def parse_voc_annotations(annotations_dir):
             combo_key = "_".join(class_names)
             combo_class_counter[combo_key] += 1
 
+    print(f'Total annotated files: {total}')
     return unique_classes, single_class_counter, combo_class_counter
 
 def main():
@@ -58,6 +60,7 @@ if __name__ == "__main__":
 
 # python count_classes.py "/media/chen/76AECF8EAECF4579/data" --list
 # python count_classes.py "/media/chen/76AECF8EAECF4579/data/VOCdevkit_xml/VOC0712/Annotations"
-# python count_classes.py "/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/Annotations"
+# python count_classes.py "/media/chen/76AECF8EAECF4579/data/lru1_all/Annotations" --list
+# python count_classes.py "/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/Annotations" --list
 
 
