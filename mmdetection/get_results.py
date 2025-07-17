@@ -48,6 +48,10 @@ if args.dataset == 'custom': ### <<<<<<<<<<---------- hardcoded path---------->>
 		'lru1_drone': 2,
 		'lru1_lander': 2,
 		'lru1_lru2': 2,
+        'ardea10' : 3,
+        'ardea10_lander' : 2,
+        'ardea10_lru1' : 2,
+        'ardea10_lru2' : 2,
 	}
 	num_classes = num_classes_dict[suffix] # CS classes
 elif args.dataset == 'voc':

@@ -57,6 +57,10 @@ num_classes_dict = { # Class IDs of ID classes
     'lru1_drone' : ['lander', 'lru2'],
     'lru1_lander' : ['drone', 'lru2'],
     'lru1_lru2' : ['drone', 'lander'],
+    'ardea10' : ['lander', 'lru1', 'lru2'],
+    'ardea10_lander' : ['lru1', 'lru2'],
+    'ardea10_lru1' : ['lander', 'lru2'],
+    'ardea10_lru2' : ['lander', 'lru1'],
 }
 id_classes = num_classes_dict[suffix] # CS classes
 

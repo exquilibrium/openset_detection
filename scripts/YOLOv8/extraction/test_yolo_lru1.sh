@@ -2,11 +2,17 @@
 cd ../../mmdetection
 
 # === SET PATH TO DATASET DIRECTORY!!! ===
-MODEL_PATH="/home/chen/openset_detection/scripts/YOLOv8/training/runs/detect/train_lru1/weights/best.pt"
-TRAIN_SET="/media/chen/76AECF8EAECF4579/data/lru1_all/ImageSets/YOLO/train.txt"
-VAL_SET="/media/chen/76AECF8EAECF4579/data/lru1_all/ImageSets/YOLO/val.txt"
-TEST_SET="/media/chen/76AECF8EAECF4579/data/lru1_all/ImageSets/YOLO/test.txt"
-OOD_SET="/media/chen/76AECF8EAECF4579/data/lru1_all/ImageSets/YOLO/test.txt"
+#MODEL_PATH="/home/chen/openset_detection/scripts/YOLOv8/training/runs/detect/train_lru1/weights/best.pt"
+#TRAIN_SET="/media/chen/76AECF8EAECF4579/data/lru1_all/ImageSets/YOLO/train.txt"
+#VAL_SET="/media/chen/76AECF8EAECF4579/data/lru1_all/ImageSets/YOLO/val.txt"
+#TEST_SET="/media/chen/76AECF8EAECF4579/data/lru1_all/ImageSets/YOLO/test.txt"
+#OOD_SET="/media/chen/76AECF8EAECF4579/data/lru1_all/ImageSets/YOLO/test.txt"
+
+MODEL_PATH="/home/chen_le/openset_detection/scripts/YOLOv8/training/runs/detect/train_lru1/weights/best.pt"
+TRAIN_SET="/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/YOLO/train.txt"
+VAL_SET="/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/YOLO/val.txt"
+TEST_SET="/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/YOLO/test.txt"
+OOD_SET="/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/YOLO/test.txt"
 # === SET PATH TO DATASET DIRECTORY!!! ===
 
 NUM_CLSS="3"

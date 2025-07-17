@@ -97,6 +97,10 @@ if args.dataset == 'custom':
         'lru1_drone' : 2,
         'lru1_lander' : 2,
         'lru1_lru2' : 2,
+        'ardea10' : 3,
+        'ardea10_lander' : 2,
+        'ardea10_lru1' : 2,
+        'ardea10_lru2' : 2,
     }
     num_classes = num_classes_dict[suffix] # CS classes
     if args.subset == 'train':
@@ -205,10 +209,8 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
 
         if debug_print:
             print(f"{imName}")
-            #print(f"Total feats shape: {feats.shape}") # [1000, 256, 7, 7]
-            #print(f"Total labels shape: {labels.shape}")
-            print(f"Selected feats shape: {final_feats.shape}") # [N, 256, 7, 7]
-            print(f"Selected labels shape: {final_labels}")
+            print(f"Total feats shape: {feats.shape}") # [1000, 256, 7, 7]
+            print(f"Total labels shape: {labels.shape}")
 
         # --- Mahalanobis++: extract ID train val features from GT-matched RoIs and confident TP detections ---
         if args.subset in ['train', 'val']:

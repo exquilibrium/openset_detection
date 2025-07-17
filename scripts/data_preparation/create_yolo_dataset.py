@@ -118,7 +118,7 @@ def create_yolo_imagesets(dataset_dir: Path, classes: List):
     imageset_dirs = [d for d in splits_dir.iterdir() if d.is_dir() and d.name.startswith("Main")]
 
     for imgset_dir in imageset_dirs:
-        suffix = imgset_dir.name[len("Main"):]  # e.g., '', '_lru2', '_drone'
+        suffix = imgset_dir.name[len("Main"):]  # e.g., '', '_CS_lru2', '_CS_drone'
         yolo_dir = splits_dir / f"YOLO{suffix}"
         yolo_dir.mkdir(parents=True, exist_ok=True)
 
@@ -144,14 +144,15 @@ def create_yolo_imagesets(dataset_dir: Path, classes: List):
 
         # Write data{suffix}.yaml in dataset_dir
         yaml_path = dataset_dir / f"data{suffix}.yaml"
-        if len(suffix) > 0 and len(suffix[3:]) > 0:
-            classes.remove(suffix[3:])
-            classes.append(suffix[3:])
+        id_classes = classes
+        if len(suffix) > 0 and len(suffix[4:]) > 0:
+            id_classes = [c for c in classes if c not in suffix[4:].split(',')]
+        print(f'Updated classes: {id_classes}')
         yaml_path.write_text(
             f"train: {yolo_dir / 'train.txt'}\n"
             f"val: {yolo_dir / 'val.txt'}\n\n"
-            f"nc: {len(classes)}\n"
-            f"names: {classes}\n"
+            f"nc: {len(id_classes)}\n"
+            f"names: {id_classes}\n"
         )
         print(f"Saved YOLO data config: {yaml_path}")
 

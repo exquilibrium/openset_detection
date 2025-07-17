@@ -6,9 +6,10 @@ cd ../YOLOv8/training
 nvidia-smi
 
 #data="/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/data_CS_lru2.yaml" \
+#data="/media/chen/76AECF8EAECF4579/data/lru1_all/data_CS_lru2.yaml" \
 yolo detect train \
   model=yolov8n.pt \
-  data="/media/chen/76AECF8EAECF4579/data/lru1_all/data_CS_lru2.yaml" \
+  data="/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/data_CS_lru2.yaml" \
   epochs=50 \
   imgsz=640 \
   amp=False \
