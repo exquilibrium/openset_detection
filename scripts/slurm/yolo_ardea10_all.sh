@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Path to scripts/FRCNN folder
-PROJECT_ROOT="$(realpath "$(dirname "${BASH_SOURCE[0]}")/../FRCNN")"
+PROJECT_ROOT="/home/chen/openset_detection/scripts/YOLOv8"
 
 # Run training script
 bash "$PROJECT_ROOT/training/train_yolo_ardea10.sh"

@@ -29,6 +29,11 @@ python "$SCRIPT_DIR/create_voc_closedset.py" "$DATASET_DIR" "lander"
 python "$SCRIPT_DIR/create_voc_closedset.py" "$DATASET_DIR" "lru1"
 python "$SCRIPT_DIR/create_voc_closedset.py" "$DATASET_DIR" "lru2"
 
+# Reduce background samples. Balance classes
+python "$SCRIPT_DIR/reduce_bg_samples.py" "$DATASET_DIR/ImageSets/Main_CS_lander/train.txt"
+python "$SCRIPT_DIR/reduce_bg_samples.py" "$DATASET_DIR/ImageSets/Main_CS_lru1/train.txt"
+python "$SCRIPT_DIR/reduce_bg_samples.py" "$DATASET_DIR/ImageSets/Main_CS_lru2/train.txt"
+
 # Create YOLO dataset splits
 python "$SCRIPT_DIR/create_yolo_dataset.py" "$DATASET_DIR"
 

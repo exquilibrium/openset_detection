@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # === SET PATH TO DATASET DIRECTORY!!! ===\
-#SOURCE_DIR=/home_local/chen_le/ARCHES
-SOURCE_DIR=/media/chen/76AECF8EAECF4579/ARCHES
+SOURCE_DIR=/home_local/chen_le/ARCHES
+#SOURCE_DIR=/media/chen/76AECF8EAECF4579/ARCHES
 BASE_DATA_FOLDER=$(python3 -c "import sys; sys.path.insert(0, '../..'); import base_dirs; print(base_dirs.BASE_DATA_FOLDER)")
 DATASET_DIR="${BASE_DATA_FOLDER}/lru1_all"
 # === SET PATH TO DATASET DIRECTORY!!! ===
@@ -37,6 +37,8 @@ python "$SCRIPT_DIR/reduce_bg_samples.py" "$DATASET_DIR/ImageSets/Main_CS_lru2/t
 python "$SCRIPT_DIR/create_yolo_dataset.py" "$DATASET_DIR"
 
 # Create OOD set for Mahalanobis
+cp "$DATASET_DIR/ImageSets/Main/test.txt" "$DATASET_DIR/ImageSets/Main/test_ood.txt"
+cp "$DATASET_DIR/ImageSets/YOLO/test.txt" "$DATASET_DIR/ImageSets/YOLO/test_ood.txt"
 python create_oodset.py "$DATASET_DIR" "drone"
 python create_oodset.py "$DATASET_DIR" "lander"
 python create_oodset.py "$DATASET_DIR" "lru2"

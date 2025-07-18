@@ -3,8 +3,8 @@
 cd ../../mmdetection
 
 # Get project root: openset_detection/
-PROJECT_ROOT=$(realpath "$(dirname "$0")/..")
-BASE_DATA_FOLDER=$(python3 -c "import sys; sys.path.insert(0, '${PROJECT_ROOT}'); import base_dirs; print(base_dirs.BASE_DATA_FOLDER)")
+PROJECT_ROOT=$(dirname "$PWD")
+BASE_DATA_FOLDER=$(python3 -c "import sys; sys.path.insert(0, '..'); import base_dirs; print(base_dirs.BASE_DATA_FOLDER)")
 
 # === SET PATH TO DATASET DIRECTORY!!! ===
 MODEL_PATH="${PROJECT_ROOT}/scripts/YOLOv8/training/runs/detect/train_voc0712/weights/best.pt"
