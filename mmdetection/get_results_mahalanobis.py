@@ -147,8 +147,8 @@ if plot:
 
     # --- 6. Histogram of scores ---
     # Define clip range (e.g., 1st and 99th percentiles)
-    lower_clip = np.percentile(np.concatenate([score_id_norm, score_ood_norm]), 10)
-    upper_clip = np.percentile(np.concatenate([score_id_norm, score_ood_norm]), 90)
+    lower_clip = np.percentile(np.concatenate([score_id_norm, score_ood_norm]), 1)
+    upper_clip = np.percentile(np.concatenate([score_id_norm, score_ood_norm]), 99)
 
     # Clip scores
     score_id_clipped = np.clip(score_id_norm, lower_clip, upper_clip)
@@ -163,8 +163,8 @@ if plot:
     plt.ylabel("Density")
     plt.legend()
     plt.tight_layout()
-    plt.show()
-    #plt.savefig(os.path.join(save_dir, "mahalanobis_score_distribution.png"))
+    #plt.show()
+    plt.savefig(os.path.join(save_dir, "mahalanobis_score_distribution.png"))
 
     # --- 7. ROC Curve Plot ---
     plt.figure(figsize=(6, 6))
@@ -176,5 +176,5 @@ if plot:
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.show()
-    #plt.savefig(os.path.join(save_dir, "mahalanobis_roc_curve.png"))
+    #plt.show()
+    plt.savefig(os.path.join(save_dir, "mahalanobis_roc_curve.png"))

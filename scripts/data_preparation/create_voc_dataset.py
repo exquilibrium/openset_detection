@@ -92,12 +92,13 @@ def generate_voc_imagesets(dataset_dir: str, train_split: float, val_split: floa
     """
     Generates 'train.txt', 'val.txt', 'test.txt' files for a VOC-style dataset
     by randomly splitting images in 'JPEGImages' using the provided ratios.
+    Excludes images where the corresponding XML annotation file contains no object.
 
     Args:
-        dataset_dir (str): Path to the dataset directory containing 'JPEGImages'.
+        dataset_dir (str): Path to the dataset directory containing 'JPEGImages' and 'Annotations'.
         train_split (float): Proportion of images to allocate to the training set.
         val_split (float): Proportion of images to allocate to the validation set.
-        test_split (float): Proportion of images to allocate to the test set. Should satisfy train + val + test = 1.0.
+        test_split (float): Proportion of images to allocate to the test set. Should sum to 1.0.
 
     Notes:
         - A fixed random seed is used for reproducibility.
@@ -106,24 +107,41 @@ def generate_voc_imagesets(dataset_dir: str, train_split: float, val_split: floa
     seed = 42
     dataset_dir = Path(dataset_dir)
     image_dir = dataset_dir / "JPEGImages"
+    anno_dir = dataset_dir / "Annotations"
     splits_dir = dataset_dir / "ImageSets" / "Main"
     splits_dir.mkdir(parents=True, exist_ok=True)
 
-    # Get all image IDs (stems only)
-    all_images = sorted([img.stem for img in image_dir.glob("*.jpg")])
-    total = len(all_images)
-    random.seed(seed)
-    random.shuffle(all_images)
+    def has_objects(xml_path):
+        try:
+            tree = ET.parse(xml_path)
+            root = tree.getroot()
+            return any(obj.tag == "object" for obj in root.findall("object"))
+        except ET.ParseError:
+            return False
 
+    # Filter image IDs with valid annotations
+    valid_image_ids = []
+    bg_image_ids = []
+    for img_path in image_dir.glob("*.jpg"):
+        xml_path = anno_dir / f"{img_path.stem}.xml"
+        if xml_path.exists() and has_objects(xml_path):
+            valid_image_ids.append(img_path.stem)
+        else:
+            bg_image_ids.append(img_path.stem)
+
+    print(f"Total valid images with objects: {len(valid_image_ids)}")
+    random.seed(seed)
+    random.shuffle(valid_image_ids)
+
+    total = len(valid_image_ids)
     n_train = int(total * train_split)
     n_val = int(total * val_split)
-    n_test = total - n_train - n_val  # Remaining
+    n_test = total - n_train - n_val
 
-    train_ids = all_images[:n_train]
-    val_ids = all_images[n_train:n_train + n_val]
-    test_ids = all_images[n_train + n_val:]
+    train_ids = valid_image_ids[:n_train]
+    val_ids = valid_image_ids[n_train:n_train + n_val]
+    test_ids = valid_image_ids[n_train + n_val:] + bg_image_ids
 
-    # Write splits
     def write_split(name, ids):
         split_path = splits_dir / f"{name}.txt"
         print(f"Writing {len(ids)} entries to {name}.txt")
@@ -134,6 +152,7 @@ def generate_voc_imagesets(dataset_dir: str, train_split: float, val_split: floa
     write_split("train", train_ids)
     write_split("val", val_ids)
     write_split("test", test_ids)
+    write_split("bg", bg_image_ids)
 
 def main():
     parser = argparse.ArgumentParser(description="Converts raw ARCHES data into PASCAL-VOC style dataset.")

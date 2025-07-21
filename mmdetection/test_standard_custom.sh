@@ -4,7 +4,7 @@ echo 'Testing with base weights:' $1
 echo 'Save name:' $2
 echo 'Dataset:' $3
 
-TEST="False" # EVAL_ONLY if FALSE
+TEST="True" # EVAL_ONLY if FALSE
 
 echo Using default pipeline
 if [ $TEST == "True" ]

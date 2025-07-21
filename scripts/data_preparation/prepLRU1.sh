@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # === SET PATH TO DATASET DIRECTORY!!! ===\
-SOURCE_DIR=/home_local/chen_le/ARCHES
-#SOURCE_DIR=/media/chen/76AECF8EAECF4579/ARCHES
+#SOURCE_DIR=/home_local/chen_le/ARCHES
+SOURCE_DIR=/media/chen/76AECF8EAECF4579/ARCHES
 BASE_DATA_FOLDER=$(python3 -c "import sys; sys.path.insert(0, '../..'); import base_dirs; print(base_dirs.BASE_DATA_FOLDER)")
 DATASET_DIR="${BASE_DATA_FOLDER}/lru1_all"
 # === SET PATH TO DATASET DIRECTORY!!! ===

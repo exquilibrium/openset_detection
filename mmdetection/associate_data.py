@@ -339,7 +339,7 @@ if args.train:
 		allTrainDets = [trainDets]
 
 	pairs = []
-	count = 0
+	count1 = 0
 	count2 = 0
 	count3 = 0
 	for tIdx, trainDataset in enumerate(trainDatasets):
@@ -404,12 +404,12 @@ if args.train:
 					maxIoU = np.max(iou[mask][gtMatches])
 					allIoUs += [maxIoU]
 
-					count+=1
+					count1+=1
 
 	#pprint.pprint(pairs)
-	print(count) # Matches
-	print(count2) # Detections
-	print(count3) # Multi Dets
+	print(f'Matches {count1}') # Matches
+	print(f'Detections {count2}')  # Detections
+	print(f'Multi-Detections {count3}') # Multi Dets
 			
 	allLogits = list(allLogits)
 	allLabels = list(allLabels)

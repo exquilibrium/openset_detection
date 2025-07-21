@@ -16,21 +16,20 @@ def has_objects(xml_path: Path) -> bool:
         print(f"Warning: could not parse {xml_path}: {e}")
         return False
 
-def copy_files(filenames: List[str], source: Path, target: Path, include_xml: bool = False):
+def copy_files(filenames: List[str], source: Path, target: Path):
     for name in tqdm(filenames, desc="Copying files", unit="file"):
         jpg_src = source / f"{name}.jpg"
         jpg_dst = target / f"{name}.jpg"
         if jpg_src.exists():
             shutil.copy(jpg_src, jpg_dst)
 
-        if include_xml:
-            xml_src = source / f"{name}.xml"
-            xml_dst = target / f"{name}.xml"
-            if xml_src.exists():
-                shutil.copy(xml_src, xml_dst)
+        xml_src = source / f"{name}.xml"
+        xml_dst = target / f"{name}.xml"
+        if xml_src.exists():
+            shutil.copy(xml_src, xml_dst)
 
 def main():
-    parser = argparse.ArgumentParser(description="Copy annotated images with objects and sample background images.")
+    parser = argparse.ArgumentParser(description="Copy images")
     parser.add_argument("source", type=Path, help="Source folder containing .jpg and .xml files")
     parser.add_argument("target", type=Path, help="Target folder to copy selected files")
     args = parser.parse_args()
@@ -51,16 +50,13 @@ def main():
         else:
             background_candidates.append(name)
 
-    num_background = int(0.3 * len(annotated_with_objects))
-    sampled_background = random.sample(background_candidates, min(num_background, len(background_candidates)))
-
     print(f"Found {len(annotated_with_objects)} annotated images with objects.")
-    print(f"Sampling {len(sampled_background)} background images (30%).")
+    print(f"Found {len(background_candidates)} background images.")
 
-    copy_files(annotated_with_objects, source, target, include_xml=True)
-    copy_files(sampled_background, source, target, include_xml=False)
+    copy_files(annotated_with_objects, source, target)
+    copy_files(background_candidates, source, target)
 
-    print(f"Copied {len(annotated_with_objects)} annotated and {len(sampled_background)} background images to {target}.")
+    print(f"Copied {len(annotated_with_objects)} annotated and {len(background_candidates)} background images to {target}.")
 
 if __name__ == "__main__":
     main()
