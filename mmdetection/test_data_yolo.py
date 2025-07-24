@@ -27,6 +27,24 @@ sys.path.append(parentdir)
 
 from base_dirs import *
 
+### DATASET 
+from torch.utils.data import Dataset, DataLoader
+class ImagePathDataset(Dataset):
+    def __init__(self, imageset_path):
+        self.image_paths = [Path(line.strip()) for line in Path(imageset_path).read_text().splitlines()]
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        path = self.image_paths[idx]
+        img = cv2.imread(str(path))  # keep as NumPy
+        return path, img
+
+def collate_fn(batch):
+    paths, imgs = zip(*batch)  # unpacks list of tuples
+    return list(paths), list(imgs)
+
 # Mahalanobis++ extraction
 import torch.nn as nn
 
@@ -205,7 +223,8 @@ def run_predict(img,
     scale_strides = [8, 16, 32]  # Correspond to P3, P4, P5
 
     # Run inference. Results are stored by hooks
-    model(img, verbose=False)
+    with torch.no_grad():
+        model(imgs_batch, verbose=False, half=True)
 
     # Reverse engineer outputs to find logits
     # See Detect.forward(): https://github.com/ultralytics/ultralytics/blob/b638c4ed9a24270a6875cdd47d9eeda99204ef5a/ultralytics/nn/modules/head.py#L22
@@ -226,27 +245,39 @@ def run_predict(img,
     img_shape = input_hook.input[0].shape[2:]
     orig_img_shape = model.predictor.batch[1][batch_idx].shape[:2]
 
-    # Compute predictions
-    boxes = []
-    for i in range(xywh_sigmoid.shape[-1]): # for each predicted box...
-        x0, y0, x1, y1, *class_probs_after_sigmoid = xywh_sigmoid[:,i]
-        x0, y0, x1, y1 = yolo_ops.scale_boxes(img_shape, np.array([x0.cpu(), y0.cpu(), x1.cpu(), y1.cpu()]), orig_img_shape)
-        logits = all_logits[:,i]
-        
-        boxes.append({
-            'bbox_xywh': [(x0.item() + x1.item())/2, (y0.item() + y1.item())/2, x1.item() - x0.item(), y1.item() - y0.item()],
-            'logits': logits.cpu().tolist(),
-            'activations': [p.item() for p in class_probs_after_sigmoid]
-        })
+    # Transpose data
+    xywh_sigmoid = xywh_sigmoid.T      # shape: [6300, 4 + C]
+    all_logits = all_logits.T          # shape: [6300, C]
 
+    # Compute predictions
+    # Slice tensors
+    coords = xywh_sigmoid[:, :4]          # [N, 4] — x0, y0, x1, y1
+    activations = xywh_sigmoid[:, 4:]     # [N, C]
+    logits = all_logits                   # [N, C]
+
+    # Scale all boxes using vector ops (no loop)
+    coords_cpu = coords.detach().cpu().numpy()  # shape [N, 4]
+    scaled_coords = np.array([
+        yolo_ops.scale_boxes(img_shape, coords_cpu[i], orig_img_shape)
+        for i in range(coords_cpu.shape[0])
+    ])  # shape [N, 4]
+
+    # Convert to cx, cy, w, h (bbox_xywh)
+    scaled_coords = torch.tensor(scaled_coords, dtype=torch.float32)  # [N, 4]
+    x0, y0, x1, y1 = scaled_coords[:, 0], scaled_coords[:, 1], scaled_coords[:, 2], scaled_coords[:, 3]
+    cx = (x0 + x1) / 2
+    cy = (y0 + y1) / 2
+    w = x1 - x0
+    h = y1 - y0
+    bbox_xywh = torch.stack([cx, cy, w, h], dim=1)  # [N, 4]
+    
     # Non-Maximum-Suppresion (Retain only the most relevant boxes based on confidence scores)
-    boxes_for_nms = torch.stack([
-        torch.tensor([
-            *b['bbox_xywh'],
-            *b['activations'],
-            *b['activations'],
-            *b['logits']]) for b in boxes
-    ], dim=1).unsqueeze(0)
+    boxes_for_nms = torch.cat([
+        bbox_xywh.to(coords.device)  ,       # [N, 4]
+        activations.to(coords.device)  ,     # [N, C]
+        activations.to(coords.device)  ,     # [N, C] again (YOLO-style input)
+        logits.to(coords.device)             # [N, C]
+    ], dim=1).T.unsqueeze(0)  # Transpose to final shape: [1, 4+3C, N] -> [1, N, 4+3C]
 
     nms_results_batch = yolo_ops.non_max_suppression(
         boxes_for_nms,
@@ -309,6 +340,8 @@ def run_predict(img,
 
             # Use best_pred to extract feature vector
             x0, y0, x1, y1, conf, cls, *acts_and_logits = best_pred
+            # Undo scaling
+            x0, y0, x1, y1 = yolo_ops.scale_boxes(orig_img_shape, np.array([x0.cpu(), y0.cpu(), x1.cpu(), y1.cpu()]), img_shape)
             box_w = x1 - x0
             box_h = y1 - y0
             box_size = max(box_w, box_h)
@@ -382,6 +415,8 @@ def run_predict(img,
 
             # Extract feature for non-redundant box
             x0, y0, x1, y1 = box_i
+            # Undo scaling
+            x0, y0, x1, y1 = yolo_ops.scale_boxes(orig_img_shape, np.array([x0, y0, x1, y1]), img_shape)
             box_w = x1 - x0
             box_h = y1 - y0
             box_size = max(box_w, box_h)
@@ -432,10 +467,11 @@ def run_predict(img,
 ###################################################################################################
 print("Building datasets")
 
+# Batching not implemented
+batch_size = 1
 # Preload images (keep original path and loaded image)
-imageset_file = Path(args.imageset_path)
-image_paths = [Path(line.strip()) for line in imageset_file.read_text().splitlines()] # Read lines, strip whitespace, and convert to Path objects
-preloaded_images = [(p, cv2.imread(str(p))) for p in image_paths]
+dataset = ImagePathDataset(args.imageset_path)
+dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4, collate_fn=collate_fn)
 
 ###################################################################################################
 ############### Build model #######################################################################
@@ -452,7 +488,6 @@ print(f"Testing {args.imageset_path} data")
 
 score_threshold = 0.2 # only detections with a max softmax above this score are considered valid
 iou_threshold = 0.5
-total = 0
 allResults = {}
 # Mahalanobis++
 gt_boxes = None
@@ -461,8 +496,9 @@ feature_id_train = []
 train_labels = []
 feature_id_val = []
 feature_ood = []
-for image_path, img in tqdm.tqdm(preloaded_images, total=len(preloaded_images)):
-    total += 1
+for image_paths_batch, imgs_batch in tqdm.tqdm(dataloader):
+    image_path = image_paths_batch[0]
+    img = imgs_batch[0]
 
     imName = image_path.name
     imName = "JPEGImages/" + imName 
@@ -508,26 +544,6 @@ for image_path, img in tqdm.tqdm(preloaded_images, total=len(preloaded_images)):
         scores = dets[:, 4] # column 4
         scoresT = np.expand_dims(scores, axis=1)
         feats = dets[:, 5+int(args.num_classes):]  # Mahalanobis++
-
-        #if len(dists) > 0:
-        #    print(imName)
-        #    print(f'Winning class {j}')
-        #    print(dists)
-
-        # !!! WE ARE NOT ADDING THE BACKRGOUND LOGIT
-        # Add background logit. Note Yolov8 uses a sigmoid head (instead of softmax). Classes are assumed to be independent.
-        # Convert to PyTorch tensor
-        #dists_tensor = torch.from_numpy(dists).float()  # [N, C]
-        # Compute sigmoid probabilities per class
-        #sigmoid_probs = torch.sigmoid(dists_tensor)  # [N, C]
-        # Conservative estimate of background probability: 1 - max class prob
-        #p_bg = 1 - torch.max(sigmoid_probs, dim=1).values.clamp(min=1e-6, max=1 - 1e-6)  # [N]
-        # Compute sum of exp(logits) for foreground classes (softmax denominator)
-        #sum_exp = torch.exp(dists_tensor).sum(dim=1)  # [N]
-        # Compute pseudo background logit using softmax math
-        #bg_logits = torch.log((p_bg / (1 - p_bg)) * sum_exp).unsqueeze(1)  # [N, 1]
-        # Concatenate background logit after foreground logits
-        #frcnn_logits = torch.cat([dists_tensor, bg_logits], dim=1).numpy()  # [N, C+1], NumPy array
 
         #winning class must be class j for this detection to be considered valid
         mask = np.argmax(dists, axis = 1)==j
