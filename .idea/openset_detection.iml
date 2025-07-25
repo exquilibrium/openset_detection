@@ -3,6 +3,11 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/mmdetection" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/mmdetection/.eggs" />
+      <excludeFolder url="file://$MODULE_DIR$/mmdetection/mmdet.egg-info" />
+      <excludeFolder url="file://$MODULE_DIR$/mmdetection/weights" />
+      <excludeFolder url="file://$MODULE_DIR$/results" />
+      <excludeFolder url="file://$MODULE_DIR$/scripts/YOLOv8/training/runs" />
     </content>
     <orderEntry type="jdk" jdkName="tmnf_os" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

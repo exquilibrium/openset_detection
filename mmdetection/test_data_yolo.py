@@ -340,6 +340,7 @@ def run_predict(img,
 
             # Use best_pred to extract feature vector
             x0, y0, x1, y1, conf, cls, *acts_and_logits = best_pred
+            logits = acts_and_logits[detect.nc:]
             # Undo scaling
             x0, y0, x1, y1 = yolo_ops.scale_boxes(orig_img_shape, np.array([x0.cpu(), y0.cpu(), x1.cpu(), y1.cpu()]), img_shape)
             box_w = x1 - x0
@@ -383,7 +384,8 @@ def run_predict(img,
             #print(gt_box, gt_label)
             features_labels.append({
                 'feature': feature_vec_np,
-                'label': gt_label
+                'label': gt_label,
+                'logits': logits
             })
         features = features_labels
     
@@ -397,10 +399,10 @@ def run_predict(img,
             box = nms_results[b, :]
             x0, y0, x1, y1, conf, cls, *acts_and_logits = box
             if conf.item() > 0.5:
-                filtered.append((b, [x0.item(), y0.item(), x1.item(), y1.item()], conf.item()))
+                filtered.append((b, [x0.item(), y0.item(), x1.item(), y1.item()], acts_and_logits[detect.nc:]))
 
         # Keep only boxes that do NOT overlap (IoU > 0.5) with any other
-        for i, (b_idx, box_i, score_i) in enumerate(filtered):
+        for i, (b_idx, box_i, logits_i) in enumerate(filtered):
             is_redundant = False
             for j, (_, box_j, _) in enumerate(filtered):
                 if i == j:
@@ -457,6 +459,7 @@ def run_predict(img,
 
             features_ood.append({
                 'feature': feature_vec_np,
+                'logits': logits_i
             })
         features = features_ood
     

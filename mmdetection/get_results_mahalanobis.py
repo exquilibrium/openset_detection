@@ -143,7 +143,8 @@ else:
 
 plot = True
 if plot:
-    save_dir = "/home/chen/Desktop/"
+    save_dir = BASE_DIR_FOLDER+'/results_img'
+    os.makedirs(save_dir, exist_ok=True)
 
     # --- 6. Histogram of scores ---
     # Define clip range (e.g., 1st and 99th percentiles)
@@ -164,7 +165,7 @@ if plot:
     plt.legend()
     plt.tight_layout()
     #plt.show()
-    plt.savefig(os.path.join(save_dir, "mahalanobis_score_distribution.png"))
+    plt.savefig(os.path.join(save_dir, args.saveNm + "mahalanobis_score_distribution.png"))
 
     # --- 7. ROC Curve Plot ---
     plt.figure(figsize=(6, 6))
@@ -177,4 +178,4 @@ if plot:
     plt.grid(True)
     plt.tight_layout()
     #plt.show()
-    plt.savefig(os.path.join(save_dir, "mahalanobis_roc_curve.png"))
+    plt.savefig(os.path.join(save_dir, args.saveNm + "mahalanobis_roc_curve.png"))

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Path to scripts/FRCNN folder
-PROJECT_ROOT="/home/chen/openset_detection/scripts/YOLOv8"
+# Path to scripts/YOLOv8 folder
+PROJECT_ROOT="/home/chen_le/openset_detection/scripts/YOLOv8"
 
 # Run training script
 #bash "$PROJECT_ROOT/training/train_yolo_lru1.sh"

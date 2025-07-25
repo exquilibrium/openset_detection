@@ -6,5 +6,6 @@
 mmdetection/workDirs/
 mmdetection/weights/
 results/
+results_img/
 
 scripts/YOLOv8/training/runs/
