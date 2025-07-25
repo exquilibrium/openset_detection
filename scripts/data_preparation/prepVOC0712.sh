@@ -6,7 +6,8 @@
 
 # === SET PATH TO DATASET DIRECTORY!!! ===
 BASE_DATA_FOLDER=$(python3 -c "import sys; sys.path.insert(0, '../..'); import base_dirs; print(base_dirs.BASE_DATA_FOLDER)")
-DATASET_DIR="${BASE_DATA_FOLDER}"
+DATASET_DIR="/volume/hot_storage/slurm_data/chen_le/"
+#DATASET_DIR="/media/chen/76AECF8EAECF4579/data"
 # === SET PATH TO DATASET DIRECTORY!!! ===
 
 # Path to script directory
@@ -20,22 +21,22 @@ python "$SCRIPT_DIR/create_voc0712.py" $DATASET_DIR
 #mv "${DATASET_DIR}/VOCdevkit_xml/VOC0712_small" "${DATASET_DIR}/VOCdevkit_xml/VOC0712"
 
 # Create closed-set VOC dataset
-ython3 "$SCRIPT_DIR/create_voc_closedset.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712" "pottedplant,sheep,sofa,train,tvmonitor"
+python "$SCRIPT_DIR/create_voc_closedset.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712" "pottedplant,sheep,sofa,train,tvmonitor"
+
+
+# Create yolo dataset
+python3 "$SCRIPT_DIR/create_yolo_dataset.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712"
 
 # Renaming
-rm -rf "${DATASET_DIR}/VOCdevkit_xml/VOC0712"
 mv "${DATASET_DIR}/VOCdevkit_xml/VOC0712/data_CS_pottedplant,sheep,sofa,train,tvmonitor.yaml" \
    "${DATASET_DIR}/VOCdevkit_xml/VOC0712/data_CS.yaml"
 mv "${DATASET_DIR}/VOCdevkit_xml/VOC0712/ImageSets/Main_CS_pottedplant,sheep,sofa,train,tvmonitor" \
    "${DATASET_DIR}/VOCdevkit_xml/VOC0712/ImageSets/Main_CS"
 
-# Create yolo dataset
-python3 "$SCRIPT_DIR/create_yolo_dataset.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712"
-
 # Create OOD set for Mahalanobis
 python create_oodset.py "${DATASET_DIR}VOCdevkit_xml/VOC0712/" "pottedplant,sheep,sofa,train,tvmonitor" --shortname
 
 # Utils
-python3 "$SCRIPT_DIR/create_coheatmap.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712"
+python "$SCRIPT_DIR/create_coheatmap.py" "${DATASET_DIR}/VOCdevkit_xml/VOC0712"
 
 echo "Data preprocessing complete!"
