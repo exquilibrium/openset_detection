@@ -185,9 +185,12 @@ total = 0
 allResults = {}
 # Mahalanobis++
 feature_id_train = []
+feature_id_train_logits = []
 train_labels = []
 feature_id_val = []
+feature_id_val_logits = []
 feature_ood = []
+feature_ood_logits = []
 debug_print = False
 for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):   
     imName = data_loader.dataset.data_infos[i]['filename']
@@ -206,6 +209,7 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
         labels = model.module.roi_head.saved_pred_labels             # [N_all]
         scores = model.module.roi_head.saved_pred_scores             # [N_all]
         rois = model.module.roi_head.saved_rois                      # [N_all, 5]
+        logits = model.module.roi_head.saved_pred_logits             # [N_all, num_classes]
 
         if debug_print:
             print(f"{imName}")
@@ -241,6 +245,7 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
             # For each GT box, find best-matching RoI
             matched_feats = []
             matched_labels = []
+            matched_logits = []
             
             for gt_idx in range(len(gt_boxes)):
                 gt_label = gt_labels[gt_idx]
@@ -251,21 +256,27 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
                     continue  # no valid matching detection
 
                 best_idx = iou_row[match_mask].argmax()
-                selected_feat = filtered_feats[match_mask][best_idx]  # [C, 7, 7] 
+                selected_feat = filtered_feats[match_mask][best_idx]  # [C, 7, 7]
+                selected_logit = logits[keep_score][match_mask][best_idx]  # Exclude background logit
+
                 matched_feats.append(selected_feat)
                 matched_labels.append(gt_label)
+                matched_logits.append(selected_logit)
 
             if len(matched_feats) == 0:
                 continue
 
             pooled_feats = torch.stack(matched_feats).mean(dim=[2, 3])  # [K, C]
+            pooled_logits = torch.stack(matched_logits)  # shape: [K, num_classes - 1]
 
             if args.subset == 'train':
                 feature_id_train.append(pooled_feats.cpu().numpy())
+                feature_id_train_logits.append(pooled_logits.cpu().numpy())
                 #print(np.shape(feature_id_train[0]))
                 train_labels.append(torch.tensor(matched_labels).cpu().numpy())
             else: # val
                 feature_id_val.append(pooled_feats.cpu().numpy())
+                feature_id_val_logits.append(pooled_logits.cpu().numpy())
 
         # --- Mahalanobis++: extract OOD features from high-confidence test boxes ---
         elif args.subset == 'testOOD':
@@ -284,9 +295,11 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
             # Keep only NMS-surviving features
             kept_feats = filtered_feats[keep_inds]              # [M, C, 7, 7]
             pooled_feats = kept_feats.mean(dim=[2, 3])          # [M, C]
+            kept_logits = logits[keep_score][keep_inds]         # [M, num_classes]
 
             # Append to global list
             feature_ood.append(pooled_feats.cpu().numpy())
+            feature_ood_logits.append(kept_logits.cpu().numpy())
     
     #collect results from each class and concatenate into a list of all the results
     for j in range(np.shape(result)[0]):
@@ -347,12 +360,15 @@ if args.subset in ['train', 'val', 'testOOD']:
         print(f"Mahalanobis-Train: {len(feature_id_train)}")
         print(f"Mahalanobis-TrainLabels: {len(train_labels)}")
         np.save(os.path.join(save_dir, f'{args.saveNm}_feature_id_train.npy'), np.concatenate(feature_id_train, axis=0))
+        np.save(os.path.join(save_dir, f'{args.saveNm}_feature_id_train_logits.npy'), np.concatenate(feature_id_train_logits, axis=0))
         np.save(os.path.join(save_dir, f'{args.saveNm}_train_labels.npy'), np.concatenate(train_labels, axis=0))
     elif args.subset == 'val':
         print(f"Mahalanobis-Val: {len(feature_id_val)}")
         np.save(os.path.join(save_dir, f'{args.saveNm}_feature_id_val.npy'), np.concatenate(feature_id_val, axis=0))
+        np.save(os.path.join(save_dir, f'{args.saveNm}_feature_id_val_logits.npy'), np.concatenate(feature_id_val_logits, axis=0))
     elif args.subset == 'testOOD':
         print(f"Mahalanobis-OOD: {len(feature_ood)}")
         np.save(os.path.join(save_dir, f'{args.saveNm}_feature_ood.npy'), np.concatenate(feature_ood, axis=0))
+        np.save(os.path.join(save_dir, f'{args.saveNm}_feature_ood_logits.npy'), np.concatenate(feature_ood_logits, axis=0))
 
 

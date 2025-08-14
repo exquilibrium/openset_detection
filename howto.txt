@@ -11,3 +11,11 @@ python tools/train.py configs/pascal_voc/faster_rcnn_r50_fpn_1x_voc0712OS_Anchor
 Test
 cd mmdetection
 ./test_standard.sh  frcnnCEwAnchorVocCS frcnn_GMMDet_Voc voc
+
+
+SLURM
+sbatch --partition=RMC-C01-BATCH --nodelist=rmc-gpu03 --cpus-per-task=4 --mem=60G --gres=gpu:1 --output=slurm-%j.out --time=20:00:00
+
+sbatch --partition=RMC-C01-BATCH --nodelist=rmc-gpu14 --cpus-per-task=16 --mem=120G --gres=gpu:1 --output=slurm-%j.out --time=20:00:00
+
+sbatch --partition=RMC-C01-BATCH --nodelist=rmc-gpu20 --cpus-per-task=10 --mem=80G --gres=gpu:1 --output=slurm-%j.out --time=20:00:00

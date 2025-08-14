@@ -1,9 +1,9 @@
 # dataset settings
 
-from base_dirs import BASE_DATA_FOLDER
+from base_dirs import BASE_VOC_FOLDER
 
 dataset_type = 'XMLDataset' ### <<<<<<<<<<---------- Important ---------->>>>>>>>>>
-data_root = BASE_DATA_FOLDER+'/VOCdevkit_xml/'
+data_root = BASE_VOC_FOLDER+'/VOCdevkit_xml/'
 
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)

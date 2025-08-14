@@ -8,6 +8,7 @@ from pathlib import Path
 
 import cv2
 import torch
+from torchvision.ops import roi_align
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 import torchvision.ops as ops
@@ -143,14 +144,23 @@ def compute_iou(boxA, boxB):
 ############## Setup Config #######################################################################
 ###################################################################################################
 class SaveIO:
-    """Simple PyTorch hook to save the output of a nn.module."""
+    """Robust PyTorch forward hook container for saving input/output."""
     def __init__(self):
         self.input = None
         self.output = None
-        
+        self.handle = None
+
     def __call__(self, module, module_in, module_out):
         self.input = module_in
         self.output = module_out
+
+    def register(self, module):
+        self.handle = module.register_forward_hook(self)
+
+    def remove(self):
+        if self.handle is not None:
+            self.handle.remove()
+            self.handle = None
 
 def load_and_prepare_model(model_path):
     """
@@ -158,40 +168,60 @@ def load_and_prepare_model(model_path):
     Hook intermediate features and raw predictions to reverse-engineer YOLO model outputs.
 
     Args:
-        model_path (YOLO): Path to YOLOv8 model
+        model_path (str): Path to YOLOv8 model (.pt or .yaml)
 
     Returns:
         model: YOLO model.
-        hooks: List of registered hook references
+        hooks: List of registered hook references + buffers, including cleanup handles.
     """
     # Load YOLO model
     model = YOLO(model_path)
-    detect = None
-    cv2_hooks = None
-    cv3_hooks = None
-    cv2_pre_hooks = None
-    detect_hook = SaveIO()
+    detect = model.model.model[-1]  # Detect head is always the last module in YOLOv8
 
-    # Identify Detect layer (YOLO head) and register forward hook (`detect_hook`)
-    for i, module in enumerate(model.model.modules()):
-        if type(module) is Detect:
-            module.register_forward_hook(detect_hook)
-            detect = module
-
-            # Register forward hooks on detection scale's internal convolution layers (`cv2` and `cv3`)
-            cv2_hooks = [SaveIO() for _ in range(module.nl)]
-            cv3_hooks = [SaveIO() for _ in range(module.nl)]
-            cv2_pre_hooks = [SaveInputOnly() for _ in range(module.nl)] # ---> Mahalanobis++
-            for i in range(module.nl):
-                module.cv2[i].register_forward_hook(cv2_hooks[i])
-                module.cv3[i].register_forward_hook(cv3_hooks[i])
-                module.cv2[i].register_forward_pre_hook(cv2_pre_hooks[i])
-            break
+    # Hook to full model input
     input_hook = SaveIO()
+    input_hook.register(model.model)
 
-    # Register top-level forward hook on entire model
-    model.model.register_forward_hook(input_hook)
-    hooks = [input_hook, detect, detect_hook, cv2_hooks, cv3_hooks, cv2_pre_hooks]
+    # Register forward hook on the Detect module
+    detect_hook = SaveIO()
+    detect_hook.register(detect)
+
+    # Hook internal detection conv layers
+    cv2_hooks = [SaveIO() for _ in range(detect.nl)]
+    cv3_hooks = [SaveIO() for _ in range(detect.nl)]
+    cv2_pre_hooks = [SaveInputOnly() for _ in range(detect.nl)]  # assumed compatible
+
+    # Pre-logit features and hooks
+    prelogit_features = [None, None, None]
+    prelogit_hooks = []
+
+    def make_prelogit_hook(index):
+        def hook_fn(module, input, output):
+            prelogit_features[index] = output  # shape: [B, C, H, W]
+        return hook_fn
+
+    for scale_idx in range(detect.nl):
+        # Hook cv2/cv3 layers
+        cv2_hooks[scale_idx].register(detect.cv2[scale_idx])
+        cv3_hooks[scale_idx].register(detect.cv3[scale_idx])
+        detect.cv2[scale_idx].register_forward_pre_hook(cv2_pre_hooks[scale_idx])
+
+        # Hook conv layer before classification
+        conv_prelogit = detect.cv3[scale_idx][-1]  # ✅ last conv before classification
+        hook = conv_prelogit.register_forward_hook(make_prelogit_hook(scale_idx))
+        prelogit_hooks.append(hook)
+
+    # Return all hooks and buffers
+    hooks = [
+        input_hook,
+        detect,
+        detect_hook,
+        cv2_hooks,
+        cv3_hooks,
+        cv2_pre_hooks,
+        prelogit_features,
+        prelogit_hooks
+    ]
 
     return model, hooks
 
@@ -219,12 +249,13 @@ def run_predict(img,
         list: List of selected bounding box dictionaries after NMS.
     """
     # Unpack hooks from load_and_prepare_model()
-    input_hook, detect, detect_hook, cv2_hooks, cv3_hooks, cv2_pre_hooks = hooks
+    input_hook, detect, detect_hook, cv2_hooks, cv3_hooks, cv2_pre_hooks, prelogit_features, prelogit_hooks = hooks
+
     scale_strides = [8, 16, 32]  # Correspond to P3, P4, P5
 
     # Run inference. Results are stored by hooks
     with torch.no_grad():
-        model(imgs_batch, verbose=False, half=True)
+        model(img, verbose=False, half=True)
 
     # Reverse engineer outputs to find logits
     # See Detect.forward(): https://github.com/ultralytics/ultralytics/blob/b638c4ed9a24270a6875cdd47d9eeda99204ef5a/ultralytics/nn/modules/head.py#L22
@@ -355,7 +386,7 @@ def run_predict(img,
                 scale_idx = 2  # P5
 
             stride = scale_strides[scale_idx]
-            feat_map = cv2_pre_hooks[scale_idx].input[0]  # [B, C, H, W]
+            feat_map = prelogit_features[scale_idx]  # shape: [B, C, H, W]
             feat_map = feat_map[0]           # [C, H, W]
             cx = (x0 + x1) / 2
             cy = (y0 + y1) / 2
@@ -365,8 +396,34 @@ def run_predict(img,
             x_feat = min(max(x_feat, 0), W - 1)
             y_feat = min(max(y_feat, 0), H - 1)
 
+            # Step 1: Box coordinates must be in original image scale
+            # (you already do this with `yolo_ops.scale_boxes`)
+            # These are float (x0, y0, x1, y1) in pixels, not feature map scale
+
+            # Step 2: Wrap as ROI tensor: [batch_idx, x0, y0, x1, y1]
+            rois = torch.tensor([[0, x0, y0, x1, y1]], dtype=torch.float32, device=feat_map.device)
+
+            # Step 3: Prepare feature map for roi_align (shape [1, C, H, W])
+            feat_map = feat_map.unsqueeze(0).float()  # ensure float32 for roi_align
+
+            # Step 4: Compute spatial_scale = feature_map_resolution / input_resolution
+            # Since stride = 8, 16, or 32 → spatial_scale = 1.0 / stride
+            spatial_scale = 1.0 / stride
+
+            # Step 5: Apply RoIAlign
+            pooled = roi_align(
+                input=feat_map,     # [1, C, H, W]
+                boxes=rois,         # [N, 5]
+                output_size=(3, 3), # match FRCNN default
+                spatial_scale=spatial_scale,
+                aligned=True        # important for subpixel accuracy
+            )  # Result: [1, C, 3, 3]
+
+            # Step 6: Convert to [C] feature vector
+            feature_vec = pooled.view(pooled.shape[1], -1).mean(dim=1)  # [C]
+
             # Extract feature map to fixed size
-            feature_vec = feat_map[:, y_feat, x_feat]  # shape: (C,)
+            # feature_vec = feat_map[:, y_feat, x_feat]  # shape: (C,) # This is points sample of ANCHOR point
             C = feature_vec.shape[0]
 
             if C < C_max:
@@ -381,7 +438,7 @@ def run_predict(img,
             projected_vec = proj(feature_vec)  # shape: (256,)
             feature_vec_np = projected_vec.detach().cpu().numpy().tolist()
 
-            #print(gt_box, gt_label)
+            #print(gt_label, flush=True)
             features_labels.append({
                 'feature': feature_vec_np,
                 'label': gt_label,
@@ -431,7 +488,7 @@ def run_predict(img,
                 scale_idx = 2
 
             stride = scale_strides[scale_idx]
-            feat_map = cv2_pre_hooks[scale_idx].input[0]  # [B, C, H, W]
+            feat_map = prelogit_features[scale_idx][0]  # shape: [B, C, H, W]
             feat_map = feat_map[0]           # [C, H, W]
             cx = (x0 + x1) / 2
             cy = (y0 + y1) / 2
@@ -441,8 +498,34 @@ def run_predict(img,
             x_feat = min(max(x_feat, 0), W - 1)
             y_feat = min(max(y_feat, 0), H - 1)
 
+            # Step 1: Box coordinates must be in original image scale
+            # (you already do this with `yolo_ops.scale_boxes`)
+            # These are float (x0, y0, x1, y1) in pixels, not feature map scale
+
+            # Step 2: Wrap as ROI tensor: [batch_idx, x0, y0, x1, y1]
+            rois = torch.tensor([[0, x0, y0, x1, y1]], dtype=torch.float32, device=feat_map.device)
+
+            # Step 3: Prepare feature map for roi_align (shape [1, C, H, W])
+            feat_map = feat_map.unsqueeze(0).float()  # ensure float32 for roi_align
+
+            # Step 4: Compute spatial_scale = feature_map_resolution / input_resolution
+            # Since stride = 8, 16, or 32 → spatial_scale = 1.0 / stride
+            spatial_scale = 1.0 / stride
+
+            # Step 5: Apply RoIAlign
+            pooled = roi_align(
+                input=feat_map,     # [1, C, H, W]
+                boxes=rois,         # [N, 5]
+                output_size=(3, 3), # match FRCNN default
+                spatial_scale=spatial_scale,
+                aligned=True        # important for subpixel accuracy
+            )  # Result: [1, C, 3, 3]
+
+            # Step 6: Convert to [C] feature vector
+            feature_vec = pooled.view(pooled.shape[1], -1).mean(dim=1)  # [C]
+
             # Extract feature map to fixed size
-            feature_vec = feat_map[:, y_feat, x_feat]  # shape: (C,)
+            # feature_vec = feat_map[:, y_feat, x_feat]  # shape: (C,) # This is points sample of ANCHOR point
             C = feature_vec.shape[0]
 
             if C < C_max:
@@ -496,9 +579,12 @@ allResults = {}
 gt_boxes = None
 gt_labels = None
 feature_id_train = []
+feature_id_train_logits = []
 train_labels = []
 feature_id_val = []
+feature_id_val_logits = []
 feature_ood = []
+feature_ood_logits = []
 for image_paths_batch, imgs_batch in tqdm.tqdm(dataloader):
     image_path = image_paths_batch[0]
     img = imgs_batch[0]
@@ -527,13 +613,22 @@ for image_paths_batch, imgs_batch in tqdm.tqdm(dataloader):
     if args.subset == 'train':
         for item in features:
             feature_id_train.append(np.array([item['feature']]))
+            logits_list = [x.detach().cpu().item() for x in item['logits']]
+            logits_np = np.array(logits_list)[None, :]  # shape: (1, num_classes)
+            feature_id_train_logits.append(logits_np)
             train_labels.append(np.array([item['label']]))
     elif args.subset == 'val':
         for item in features:
             feature_id_val.append(np.array([item['feature']]))
+            logits_list = [x.detach().cpu().item() for x in item['logits']]
+            logits_np = np.array(logits_list)[None, :]  # shape: (1, num_classes)
+            feature_id_val_logits.append(logits_np)
     elif args.subset == 'testOOD':
         for item in features:
             feature_ood.append(np.array([item['feature']]))
+            logits_list = [x.detach().cpu().item() for x in item['logits']]
+            logits_np = np.array(logits_list)[None, :]  # shape: (1, num_classes)
+            feature_ood_logits.append(logits_np)
 
     #collect results from each class and concatenate into a list of all the results
     for j in range(np.shape(result)[0]):
@@ -580,6 +675,32 @@ for image_paths_batch, imgs_batch in tqdm.tqdm(dataloader):
 
     allResults[imName] = detections.tolist()
 
+'''
+# Cleanup hooks
+def cleanup_hooks(hooks):
+    input_hook, _, detect_hook, cv2_hooks, cv3_hooks, cv2_pre_hooks, _, prelogit_hooks = hooks
+
+    # Remove top-level model input hook
+    input_hook.remove()
+
+    # Remove detect module forward hook
+    detect_hook.remove()
+
+    # Remove cv2 and cv3 hooks (if they support `.remove()`)
+    for hook in cv2_hooks + cv3_hooks:
+        hook.remove()
+
+    # Remove pre-forward hooks
+    for hook in cv2_pre_hooks:
+        hook.remove()
+
+    # Remove prelogit hooks
+    for hook in prelogit_hooks:
+        hook.remove()
+
+cleanup_hooks(hooks)
+'''
+
 # Save raw detection results (existing logic)
 if args.subset in ['train', 'val', 'test']:
     jsonRes = json.dumps(allResults)
@@ -596,14 +717,15 @@ if args.subset in ['train', 'val', 'testOOD']:
 
     if args.subset == 'train':   
         print(f"Mahalanobis-Train: {len(feature_id_train)}")
-        #print(feature_id_train)
         print(f"Mahalanobis-TrainLabels: {len(train_labels)}")
-        #print(train_labels)
         np.save(os.path.join(maha_save_dir, f'{args.saveNm}_feature_id_train.npy'), np.concatenate(feature_id_train, axis=0))
+        np.save(os.path.join(maha_save_dir, f'{args.saveNm}_feature_id_train_logits.npy'), np.concatenate(feature_id_train_logits, axis=0))
         np.save(os.path.join(maha_save_dir, f'{args.saveNm}_train_labels.npy'), np.concatenate(train_labels, axis=0))
     elif args.subset == 'val':
         print(f"Mahalanobis-Val: {len(feature_id_val)}")
         np.save(os.path.join(maha_save_dir, f'{args.saveNm}_feature_id_val.npy'), np.concatenate(feature_id_val, axis=0))
+        np.save(os.path.join(maha_save_dir, f'{args.saveNm}_feature_id_val_logits.npy'), np.concatenate(feature_id_val_logits, axis=0))
     elif args.subset == 'testOOD':
         print(f"Mahalanobis-OOD: {len(feature_ood)}")
         np.save(os.path.join(maha_save_dir, f'{args.saveNm}_feature_ood.npy'), np.concatenate(feature_ood, axis=0))
+        np.save(os.path.join(maha_save_dir, f'{args.saveNm}_feature_ood_logits.npy'), np.concatenate(feature_ood_logits, axis=0))

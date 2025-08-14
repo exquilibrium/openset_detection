@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Path to scripts/FRCNN folder
-PROJECT_ROOT="/home/chen/openset_detection/scripts/FRCNN"
+PROJECT_ROOT="/home/chen_le/openset_detection/scripts/FRCNN"
 
 # Run training script
 bash "$PROJECT_ROOT/training/train_frcnn_voc0712_xml.sh"

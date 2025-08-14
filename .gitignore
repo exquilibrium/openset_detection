@@ -1,6 +1,7 @@
 *.pyc
 *.json
 *.zip
+*.out
 .ipynb_checkpoints
 
 mmdetection/workDirs/

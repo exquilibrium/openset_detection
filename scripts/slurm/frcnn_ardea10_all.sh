@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Path to scripts/FRCNN folder
-PROJECT_ROOT="/home/chen/openset_detection/scripts/FRCNN"
+PROJECT_ROOT="/home/chen_le/openset_detection/scripts/FRCNN"
 
 # Adjust pretrained in _base_/models
 # Run training script
