@@ -8,7 +8,7 @@ echo '     Val:' $5
 echo '    Test:' $6
 echo ' TestOOD:' $7
 
-TEST="True" # EVAL_ONLY if FALSE
+TEST="False" # EVAL_ONLY if FALSE
 
 echo Using normal pipeline
 if [ $TEST == "True" ]

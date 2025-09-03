@@ -82,6 +82,7 @@ num_classes_dict = { # Class IDs of ID classes
     'ardea10_lru2' : ['lander', 'lru1'],
 }
 id_classes = num_classes_dict[suffix] # CS classes
+print(f'ID Classes: {id_classes}')
 
 ### Mahalanobis++
 class SaveInputOnly:
@@ -456,12 +457,12 @@ def run_predict(img,
             box = nms_results[b, :]
             x0, y0, x1, y1, conf, cls, *acts_and_logits = box
             if conf.item() > 0.5:
-                filtered.append((b, [x0.item(), y0.item(), x1.item(), y1.item()], acts_and_logits[detect.nc:]))
+                filtered.append((b, [x0.item(), y0.item(), x1.item(), y1.item()], acts_and_logits[detect.nc:], int(cls.item())))
 
         # Keep only boxes that do NOT overlap (IoU > 0.5) with any other
-        for i, (b_idx, box_i, logits_i) in enumerate(filtered):
+        for i, (b_idx, box_i, logits_i, cls_idx) in enumerate(filtered):
             is_redundant = False
-            for j, (_, box_j, _) in enumerate(filtered):
+            for j, (_, box_j, _, _) in enumerate(filtered):
                 if i == j:
                     continue
                 iou = compute_iou(box_i, box_j)
@@ -488,7 +489,7 @@ def run_predict(img,
                 scale_idx = 2
 
             stride = scale_strides[scale_idx]
-            feat_map = prelogit_features[scale_idx][0]  # shape: [B, C, H, W]
+            feat_map = prelogit_features[scale_idx]  # shape: [B, C, H, W]
             feat_map = feat_map[0]           # [C, H, W]
             cx = (x0 + x1) / 2
             cy = (y0 + y1) / 2
@@ -542,6 +543,7 @@ def run_predict(img,
 
             features_ood.append({
                 'feature': feature_vec_np,
+				'label': cls_idx,
                 'logits': logits_i
             })
         features = features_ood
@@ -583,8 +585,10 @@ feature_id_train_logits = []
 train_labels = []
 feature_id_val = []
 feature_id_val_logits = []
+val_labels = []
 feature_ood = []
 feature_ood_logits = []
+test_labels = []
 for image_paths_batch, imgs_batch in tqdm.tqdm(dataloader):
     image_path = image_paths_batch[0]
     img = imgs_batch[0]
@@ -623,12 +627,14 @@ for image_paths_batch, imgs_batch in tqdm.tqdm(dataloader):
             logits_list = [x.detach().cpu().item() for x in item['logits']]
             logits_np = np.array(logits_list)[None, :]  # shape: (1, num_classes)
             feature_id_val_logits.append(logits_np)
+            val_labels.append(np.array([item['label']]))
     elif args.subset == 'testOOD':
         for item in features:
             feature_ood.append(np.array([item['feature']]))
             logits_list = [x.detach().cpu().item() for x in item['logits']]
             logits_np = np.array(logits_list)[None, :]  # shape: (1, num_classes)
             feature_ood_logits.append(logits_np)
+            test_labels.append(np.array([item['label']]))
 
     #collect results from each class and concatenate into a list of all the results
     for j in range(np.shape(result)[0]):
@@ -725,7 +731,9 @@ if args.subset in ['train', 'val', 'testOOD']:
         print(f"Mahalanobis-Val: {len(feature_id_val)}")
         np.save(os.path.join(maha_save_dir, f'{args.saveNm}_feature_id_val.npy'), np.concatenate(feature_id_val, axis=0))
         np.save(os.path.join(maha_save_dir, f'{args.saveNm}_feature_id_val_logits.npy'), np.concatenate(feature_id_val_logits, axis=0))
+        np.save(os.path.join(maha_save_dir, f'{args.saveNm}_val_labels.npy'), np.concatenate(val_labels, axis=0))
     elif args.subset == 'testOOD':
         print(f"Mahalanobis-OOD: {len(feature_ood)}")
         np.save(os.path.join(maha_save_dir, f'{args.saveNm}_feature_ood.npy'), np.concatenate(feature_ood, axis=0))
         np.save(os.path.join(maha_save_dir, f'{args.saveNm}_feature_ood_logits.npy'), np.concatenate(feature_ood_logits, axis=0))
+        np.save(os.path.join(maha_save_dir, f'{args.saveNm}_test_labels.npy'), np.concatenate(test_labels, axis=0))

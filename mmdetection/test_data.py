@@ -189,8 +189,10 @@ feature_id_train_logits = []
 train_labels = []
 feature_id_val = []
 feature_id_val_logits = []
+val_labels = []
 feature_ood = []
 feature_ood_logits = []
+test_labels = []
 debug_print = False
 for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):   
     imName = data_loader.dataset.data_infos[i]['filename']
@@ -277,6 +279,7 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
             else: # val
                 feature_id_val.append(pooled_feats.cpu().numpy())
                 feature_id_val_logits.append(pooled_logits.cpu().numpy())
+                val_labels.append(torch.tensor(matched_labels).cpu().numpy())
 
         # --- Mahalanobis++: extract OOD features from high-confidence test boxes ---
         elif args.subset == 'testOOD':
@@ -288,6 +291,7 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
             filtered_feats = feats[keep_score]            # [K, C, 7, 7]
             filtered_boxes = rois[keep_score, 1:5]        # [K, 4]
             filtered_scores = scores[keep_score]          # [K]
+            filtered_labels = labels[keep_score]          # [1,N] last label is background
 
             # Apply NMS (IoU threshold 0.5)
             keep_inds = nms(filtered_boxes, filtered_scores, iou_threshold=0.5)
@@ -300,6 +304,7 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
             # Append to global list
             feature_ood.append(pooled_feats.cpu().numpy())
             feature_ood_logits.append(kept_logits.cpu().numpy())
+            test_labels.append(filtered_labels[keep_inds].cpu().numpy())  # Use keep_inds here
     
     #collect results from each class and concatenate into a list of all the results
     for j in range(np.shape(result)[0]):
@@ -364,11 +369,15 @@ if args.subset in ['train', 'val', 'testOOD']:
         np.save(os.path.join(save_dir, f'{args.saveNm}_train_labels.npy'), np.concatenate(train_labels, axis=0))
     elif args.subset == 'val':
         print(f"Mahalanobis-Val: {len(feature_id_val)}")
+        print(f"Mahalanobis-TrainLabels: {len(val_labels)}")
         np.save(os.path.join(save_dir, f'{args.saveNm}_feature_id_val.npy'), np.concatenate(feature_id_val, axis=0))
         np.save(os.path.join(save_dir, f'{args.saveNm}_feature_id_val_logits.npy'), np.concatenate(feature_id_val_logits, axis=0))
+        np.save(os.path.join(save_dir, f'{args.saveNm}_val_labels.npy'), np.concatenate(val_labels, axis=0))
     elif args.subset == 'testOOD':
         print(f"Mahalanobis-OOD: {len(feature_ood)}")
+        print(f"Mahalanobis-TrainLabels: {len(test_labels)}")
         np.save(os.path.join(save_dir, f'{args.saveNm}_feature_ood.npy'), np.concatenate(feature_ood, axis=0))
         np.save(os.path.join(save_dir, f'{args.saveNm}_feature_ood_logits.npy'), np.concatenate(feature_ood_logits, axis=0))
+        np.save(os.path.join(save_dir, f'{args.saveNm}_test_labels.npy'), np.concatenate(test_labels, axis=0))
 
 

@@ -44,6 +44,7 @@ def evaluate_Mahalanobis_norm(feature_id_train, feature_id_val, feature_ood, tra
         train_means.append(_m)
         train_feat_centered.extend(fs - _m)
     ec = EmpiricalCovariance(assume_centered=True)
+    
     ec.fit(np.array(train_feat_centered).astype(np.float64))
     mean = np.array(train_means)
     prec = (ec.precision_)
