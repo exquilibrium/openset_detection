@@ -284,7 +284,7 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
         # --- Mahalanobis++: extract OOD features from high-confidence test boxes ---
         elif args.subset == 'testOOD':
             # Filter by score
-            keep_score = scores > 0.5
+            keep_score = scores > 0.2 # 0.5
             if keep_score.sum() == 0:
                 continue
 

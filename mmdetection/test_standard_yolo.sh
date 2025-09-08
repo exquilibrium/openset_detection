@@ -23,5 +23,6 @@ then
     python associate_data.py YOLOv8 --saveNm $3 --dataset custom
 fi
 echo Getting Results
-python get_results.py YOLOv8 --saveNm $3 --dataset custom --saveResults True
-python get_results_mahalanobis.py --saveNm "$3" --dataset "custom" --use_yolo
+#python get_results.py YOLOv8 --saveNm $3 --dataset custom --saveResults True
+#python get_results_mahalanobis.py --saveNm "$3" --dataset "custom" --use_yolo
+python get_results_mahalanobis_outlier.py --saveNm "$3" --dataset "custom" --use_yolo

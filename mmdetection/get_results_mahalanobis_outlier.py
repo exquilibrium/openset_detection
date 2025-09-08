@@ -156,8 +156,8 @@ def post_process_outlier_per_class(per_class, agg_pos, agg_neg, save_prefix, tit
         neg_clip = np.clip(neg, lower, upper)
 
         plt.figure(figsize=(8,4))
-        plt.hist(pos_clip, bins=50, alpha=0.6, label=f'Inliers(y={c})', density=True)
-        plt.hist(neg_clip, bins=50, alpha=0.6, label=f'Outliers(y≠{c})', density=True)
+        plt.hist(pos_clip, bins=50, alpha=0.6, label=f'Inliers(y={c})', color='blue', density=True)
+        plt.hist(neg_clip, bins=50, alpha=0.6, label=f'Outliers(y≠{c})', color='red', density=True)
         plt.axvline(thr95, linestyle='--', label='TPR=0.95 thr')
         plt.title(f"Class {c} — Mahalanobis++ Scores {title_suffix}")
         plt.xlabel("Score (higher=inlier-like)")
@@ -290,8 +290,8 @@ def post_process_Mahalanobis_norm(score_id, score_ood, save_prefix, logits=False
     score_ood_clipped = np.clip(score_ood_norm, lower_clip, upper_clip)
 
     plt.figure(figsize=(8,4))
-    plt.hist(score_id_clipped, bins=50, alpha=0.6, label='ID (val)', density=True)
-    plt.hist(score_ood_clipped, bins=50, alpha=0.6, label='OOD (test)', density=True)
+    plt.hist(score_id_clipped, bins=50, alpha=0.6, label='ID (val)', color='blue', density=True)
+    plt.hist(score_ood_clipped, bins=50, alpha=0.6, label='OOD (test)', color='red', density=True)
     plt.axvline(threshold, linestyle='--', label=label_thresh)
     plt.title("Mahalanobis++ Normalized Score Distributions")
     plt.xlabel("Normalized Mahalanobis Score")

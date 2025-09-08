@@ -47,12 +47,28 @@ def collate_fn(batch):
     return list(paths), list(imgs)
 
 # Mahalanobis++ extraction
+# --- Fixed projection: create, then load weights ---
 import torch.nn as nn
 
 C_max = 512
 C_out = 256
+
+PROJ_PATH = "/home/chen_le/openset_detection/scripts/projection.pt"
+assert os.path.isfile(PROJ_PATH), f"Projection file not found: {PROJ_PATH}"
+
+# create the layer
 proj = nn.Linear(C_max, C_out).to(device)
 proj.eval()
+
+# load state
+ckpt = torch.load(PROJ_PATH, map_location=device)
+state = ckpt.get("state_dict", ckpt)
+proj.load_state_dict(state, strict=True)
+
+# checksum
+with torch.no_grad():
+    wsum = torch.cat([p.flatten().detach().cpu() for p in proj.parameters()]).sum().item()
+print(f"[INFO] Loaded projection from {PROJ_PATH} (checksum: {wsum:.6f})")
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Test the data and save the raw detections')
@@ -456,7 +472,7 @@ def run_predict(img,
         for b in range(nms_results.shape[0]):
             box = nms_results[b, :]
             x0, y0, x1, y1, conf, cls, *acts_and_logits = box
-            if conf.item() > 0.5:
+            if conf.item() > 0.2: # 0.5
                 filtered.append((b, [x0.item(), y0.item(), x1.item(), y1.item()], acts_and_logits[detect.nc:], int(cls.item())))
 
         # Keep only boxes that do NOT overlap (IoU > 0.5) with any other

@@ -130,6 +130,8 @@ def post_process_Mahalanobis_norm(score_id, score_ood, logits=False):
         plt.figure(figsize=(8, 4))
         plt.hist(score_id_clipped, bins=50, alpha=0.6, label='ID (val)', color='blue', density=True)
         plt.hist(score_ood_clipped, bins=50, alpha=0.6, label='OOD (test)', color='red', density=True)
+        #threshold=-4.2
+        #plt.xlim(left=-15)
         plt.axvline(threshold, color='black', linestyle='--', label=label_thresh)
         plt.title("Mahalanobis++ Normalized Score Distributions")
         plt.xlabel("Normalized Mahalanobis Score")
