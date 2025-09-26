@@ -13,6 +13,10 @@ python "$SCRIPT_DIR/import_data.py" "${BASE_DATA_FOLDER}/ardea10_run01_labels" "
 python "$SCRIPT_DIR/import_data.py" "${BASE_DATA_FOLDER}/ardea10_run02_labels" "${DATASET_DIR}"
 python "$SCRIPT_DIR/import_data.py" "${BASE_DATA_FOLDER}/ardea10_run04_labels" "${DATASET_DIR}"
 python "$SCRIPT_DIR/import_data.py" "${BASE_DATA_FOLDER}/ardea10_run05_labels" "${DATASET_DIR}"
+python "$SCRIPT_DIR/import_data.py" "${BASE_DATA_FOLDER}/ardea10_run01" "${DATASET_DIR}"
+python "$SCRIPT_DIR/import_data.py" "${BASE_DATA_FOLDER}/ardea10_run02" "${DATASET_DIR}"
+python "$SCRIPT_DIR/import_data.py" "${BASE_DATA_FOLDER}/ardea10_run04" "${DATASET_DIR}"
+python "$SCRIPT_DIR/import_data.py" "${BASE_DATA_FOLDER}/ardea10_run05" "${DATASET_DIR}"
 
 # Create VOC dataset
 python "$SCRIPT_DIR/create_voc_dataset.py" "$DATASET_DIR" --train_split 0.6 --val_split 0.2 --test_split 0.2

@@ -17,6 +17,6 @@ OOD_SET="${BASE_DATA_FOLDER}/ardea10_all/ImageSets/YOLO/test_ood.txt"
 # === SET PATH TO DATASET DIRECTORY!!! ===
 
 NUM_CLSS="3"
-SAVE_NAME="frcnn_GMMDet_Voc_${DS}yolo"
+SAVE_NAME="frcnn_GMMDet_Voc_${DS}_yolo"
 
 ./test_standard_yolo.sh $MODEL_PATH $NUM_CLSS $SAVE_NAME $TRAIN_SET $VAL_SET $TEST_SET $OOD_SET

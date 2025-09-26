@@ -8,11 +8,11 @@ python remap_yolo_labels.py "${BASE_DATA_FOLDER}/ardea10_all/JPEGImages" 0,1,2 2
 
 yolo detect train \
   model=yolov8n.pt \
-  data="${BASE_DATA_FOLDER}/ardea10_all/data.yaml" \
+  data="${BASE_DATA_FOLDER}/ardea10_all/data_CS_lander.yaml" \
   epochs=50 \
   imgsz=640 \
   amp=False \
   project="runs/detect" \
   name="train_ardea10_lander"
 
-python remap_yolo_labels.py "${BASE_DATA_FOLDER}//ardea10_all/JPEGImages" 0,1,2 2,0,1 --reverse
+python remap_yolo_labels.py "${BASE_DATA_FOLDER}/ardea10_all/JPEGImages" 0,1,2 2,0,1 --reverse

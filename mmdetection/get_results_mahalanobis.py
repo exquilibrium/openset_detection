@@ -6,7 +6,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.covariance import EmpiricalCovariance
-from sklearn.metrics import roc_auc_score, roc_curve
+from sklearn.metrics import roc_curve, roc_auc_score, precision_recall_curve, auc
 
 currentdir = os.path.dirname(os.path.realpath(__file__))
 parentdir = os.path.dirname(currentdir)
@@ -58,101 +58,109 @@ def evaluate_Mahalanobis_norm(feature_id_train, feature_id_val, feature_ood, tra
                            tqdm.tqdm(torch.from_numpy(feature_ood).cuda().double())])
     return score_id, score_ood
 
+def _compute_auroc(labels, scores):
+    fpr, tpr, thresholds = roc_curve(labels, scores, pos_label=1)
+    auroc = roc_auc_score(labels, scores)
+    return fpr, tpr, thresholds, auroc
+
+def _compute_aupr(labels, scores):
+    precision, recall, thresholds = precision_recall_curve(labels, scores, pos_label=1)  # AUPR-In
+    aupr = auc(recall, precision)
+    return precision, recall, thresholds, aupr
+
 def post_process_Mahalanobis_norm(score_id, score_ood, logits=False):
-    s=''
-    if logits:
-        s = '_logits'
+    s = '_logits' if logits else ''
 
     # --- 1. Normalize scores using ID statistics ---
     mean_id = np.mean(score_id)
     std_id = np.std(score_id)
-
-    score_id_norm = (score_id - mean_id) / std_id
+    score_id_norm  = (score_id  - mean_id) / std_id
     score_ood_norm = (score_ood - mean_id) / std_id  # Normalize OOD using ID stats
 
-    # --- 1.5 Optional: Invert sign if OOD scores > ID scores (incorrectly)
+    # --- 1.5 Invert sign if OOD appears larger than ID (we want higher = more ID-like) ---
     if np.mean(score_ood_norm) > np.mean(score_id_norm):
         print("Inverting score signs (high score must mean more ID-like)...")
-        score_id_norm *= -1
+        score_id_norm  *= -1
         score_ood_norm *= -1
 
-    # --- 2. Combine scores and labels ---
+    # --- 2. Combine scores and labels (ID=1, OOD=0) ---
     scores = np.concatenate([score_id_norm, score_ood_norm])
     labels = np.concatenate([np.ones_like(score_id_norm), np.zeros_like(score_ood_norm)])
 
-    # --- 3. Compute ROC and AUROC ---
-    fpr, tpr, thresholds = roc_curve(labels, scores)
-    auroc = roc_auc_score(labels, scores)
+    # --- 3. AUROC ---
+    fpr, tpr, thresholds_roc, auroc = _compute_auroc(labels, scores)
     print(f"AUROC: {auroc:.4f}")
 
     # --- 4. TPR at specific FPR levels ---
     def tpr_at_fpr(fpr, tpr, target_fpr):
         idx = np.argmin(np.abs(fpr - target_fpr))
         return tpr[idx]
-
     for target in [0.2, 0.1, 0.05]:
         tpr_val = tpr_at_fpr(fpr, tpr, target)
         print(f"TPR at FPR={target:.2f}: {tpr_val:.4f}")
 
-    # --- 5. FPR for ID-only "OOD" set (false positive check) ---
+    # --- 5. Threshold at TPR=0.95 (optional branch retained) ---
     use_tpr95 = True
     if use_tpr95:
-        # --- Find threshold at TPR = 95% ---
         target_tpr = 0.95
         idx = np.argmin(np.abs(tpr - target_tpr))
-        threshold_tpr95 = thresholds[idx]
-        print(f"Threshold at TPR=0.95: {threshold_tpr95:.4f}")
-        threshold = threshold_tpr95
+        threshold = thresholds_roc[idx]
         label_thresh = 'TPR=0.95 threshold'
+        print(f"Threshold at TPR=0.95: {threshold:.4f}")
     else:
-        # Use threshold on normalized scores (5th percentile of ID)
-        threshold_id5 = np.percentile(score_id_norm, 5)
+        threshold = np.percentile(score_id_norm, 5)
         false_positives = np.sum(score_ood_norm < threshold)
         fpr_manual = false_positives / len(score_ood_norm)
-        print(f"False positive rate (on ID-only OOD set): {fpr_manual:.4f}")
-        threshold = threshold_id5
         label_thresh = 'ID 5% threshold'
+        print(f"False positive rate (on ID-only OOD set): {fpr_manual:.4f}")
 
-    plot = True
-    if plot:
-        save_dir = BASE_DIR_FOLDER + '/results_img'
-        os.makedirs(save_dir, exist_ok=True)
+    # --- 6. AUPR (AUPR-In: ID is positive) ---
+    precision, recall, thresholds_pr, aupr = _compute_aupr(labels, scores)
+    print(f"AUPR-In: {aupr:.4f}")
 
-        # --- 6. Histogram of scores ---
-        # Define clip range (e.g., 1st and 99th percentiles)
-        lower_clip = np.percentile(np.concatenate([score_id_norm, score_ood_norm]), 1)
-        upper_clip = np.percentile(np.concatenate([score_id_norm, score_ood_norm]), 99)
+    # --- 7. Plots ---
+    save_dir = BASE_DIR_FOLDER + '/results_img'
+    os.makedirs(save_dir, exist_ok=True)
 
-        # Clip scores
-        score_id_clipped = np.clip(score_id_norm, lower_clip, upper_clip)
-        score_ood_clipped = np.clip(score_ood_norm, lower_clip, upper_clip)
+    # Score histograms with threshold marker
+    lower_clip = np.percentile(np.concatenate([score_id_norm, score_ood_norm]), 1)
+    upper_clip = np.percentile(np.concatenate([score_id_norm, score_ood_norm]), 99)
+    score_id_clipped  = np.clip(score_id_norm,  lower_clip, upper_clip)
+    score_ood_clipped = np.clip(score_ood_norm, lower_clip, upper_clip)
 
-        plt.figure(figsize=(8, 4))
-        plt.hist(score_id_clipped, bins=50, alpha=0.6, label='ID (val)', color='blue', density=True)
-        plt.hist(score_ood_clipped, bins=50, alpha=0.6, label='OOD (test)', color='red', density=True)
-        #threshold=-4.2
-        #plt.xlim(left=-15)
-        plt.axvline(threshold, color='black', linestyle='--', label=label_thresh)
-        plt.title("Mahalanobis++ Normalized Score Distributions")
-        plt.xlabel("Normalized Mahalanobis Score")
-        plt.ylabel("Density")
-        plt.legend()
-        plt.tight_layout()
-        # plt.show()
-        plt.savefig(os.path.join(save_dir, args.saveNm + f"mahalanobis_score_distribution{s}.png"))
+    plt.figure(figsize=(8, 4))
+    plt.hist(score_id_clipped,  bins=50, alpha=0.6, label='ID (val)',  color='blue', density=True)
+    plt.hist(score_ood_clipped, bins=50, alpha=0.6, label='OOD (test)', color='red',  density=True)
+    plt.axvline(threshold, color='black', linestyle='--', label=label_thresh)
+    plt.title("Mahalanobis++ Normalized Score Distributions")
+    plt.xlabel("Normalized Mahalanobis Score (higher = more ID-like)")
+    plt.ylabel("Density")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, args.saveNm + f"mahalanobis_score_distribution{s}.png"))
 
-        # --- 7. ROC Curve Plot ---
-        plt.figure(figsize=(6, 6))
-        plt.plot(fpr, tpr, label=f'AUROC = {auroc:.4f}')
-        plt.plot([0, 1], [0, 1], 'k--')
-        plt.xlabel("False Positive Rate")
-        plt.ylabel("True Positive Rate")
-        plt.title("Mahalanobis++ ROC Curve")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        # plt.show()
-        plt.savefig(os.path.join(save_dir, args.saveNm + f"mahalanobis_roc_curve{s}.png"))
+    # ROC curve
+    plt.figure(figsize=(6, 6))
+    plt.plot(fpr, tpr, label=f'AUROC = {auroc:.4f}')
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("Mahalanobis++ ROC Curve")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, args.saveNm + f"mahalanobis_roc_curve{s}.png"))
+
+    # PR curve (AUPR-In)
+    plt.figure(figsize=(6, 6))
+    plt.plot(recall, precision, label=f'AUPR-In = {aupr:.4f}')
+    plt.xlabel("Recall (ID)")
+    plt.ylabel("Precision (ID)")
+    plt.title("Mahalanobis++ Precision–Recall Curve (ID positive)")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, args.saveNm + f"mahalanobis_pr_curve{s}.png"))
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--saveNm', type=str, required=True, help='Base filename used when saving features')

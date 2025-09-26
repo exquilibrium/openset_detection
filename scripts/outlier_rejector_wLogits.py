@@ -43,99 +43,198 @@ ckpt = torch.load(PROJ_PATH, map_location=device)
 state = ckpt.get("state_dict", ckpt)
 proj.load_state_dict(state, strict=True)
 
+class SaveInputOnly:
+    def __init__(self):
+        self.input = None
+
+    def __call__(self, module, input):
+        self.input = input
+
+class SaveIO:
+    """Robust PyTorch forward hook container for saving input/output."""
+    def __init__(self):
+        self.input = None
+        self.output = None
+        self.handle = None
+
+    def __call__(self, module, module_in, module_out):
+        self.input = module_in
+        self.output = module_out
+
+    def register(self, module):
+        self.handle = module.register_forward_hook(self)
+
+    def remove(self):
+        if self.handle is not None:
+            self.handle.remove()
+            self.handle = None
 
 def load_and_prepare_model(model_path):
     # Load YOLO model
     model = YOLO(model_path)
-    detect = model.model.model[-1]  # YOLOv8 Detect head
+    detect = model.model.model[-1]  # Detect head is always the last module in YOLOv8
+
+    # Hook to full model input
+    input_hook = SaveIO()
+    input_hook.register(model.model)
+
+    # Register forward hook on the Detect module
+    detect_hook = SaveIO()
+    detect_hook.register(detect)
+
+    # Hook internal detection conv layers
+    cv2_hooks = [SaveIO() for _ in range(detect.nl)]
+    cv3_hooks = [SaveIO() for _ in range(detect.nl)]
+    cv2_pre_hooks = [SaveInputOnly() for _ in range(detect.nl)]  # assumed compatible
 
     # Pre-logit features and hooks
-    prelogit_features =  [None] * detect.nl # [None, None, None]
+    prelogit_features = [None, None, None]
+    prelogit_hooks = []
 
     def make_prelogit_hook(index):
         def hook_fn(module, input, output):
-            prelogit_features[index] = output.detach()  # shape: [B, C, H, W]
+            prelogit_features[index] = output  # shape: [B, C, H, W]
         return hook_fn
 
     for scale_idx in range(detect.nl):
+        # Hook cv2/cv3 layers
+        cv2_hooks[scale_idx].register(detect.cv2[scale_idx])
+        cv3_hooks[scale_idx].register(detect.cv3[scale_idx])
+        detect.cv2[scale_idx].register_forward_pre_hook(cv2_pre_hooks[scale_idx])
+
         # Hook conv layer before classification
-        conv_prelogit = detect.cv3[scale_idx][-1]  # last conv before classification
-        conv_prelogit.register_forward_hook(make_prelogit_hook(scale_idx))
-        
-    return model, prelogit_features
+        conv_prelogit = detect.cv3[scale_idx][-1]  # ✅ last conv before classification
+        hook = conv_prelogit.register_forward_hook(make_prelogit_hook(scale_idx))
+        prelogit_hooks.append(hook)
+
+    # Return all hooks and buffers
+    hooks = [
+        input_hook,
+        detect,
+        detect_hook,
+        cv2_hooks,
+        cv3_hooks,
+        cv2_pre_hooks,
+        prelogit_features,
+        prelogit_hooks
+    ]
+
+    return model, hooks
 
 ###################################################################################################
 ############## Get Feature Map ####################################################################
 ###################################################################################################
+def _boxes_iou_xyxy(a, b):
+    ax0, ay0, ax1, ay1 = a
+    bx0, by0, bx1, by1 = b
+    inter_x0, inter_y0 = max(ax0, bx0), max(ay0, by0)
+    inter_x1, inter_y1 = min(ax1, bx1), min(ay1, by1)
+    inter_w = max(0.0, inter_x1 - inter_x0)
+    inter_h = max(0.0, inter_y1 - inter_y0)
+    inter = inter_w * inter_h
+    area_a = max(0.0, ax1 - ax0) * max(0.0, ay1 - ay0)
+    area_b = max(0.0, bx1 - bx0) * max(0.0, by1 - by0)
+    union = area_a + area_b - inter + 1e-9
+    return inter / union
+
 def get_feature_map(img, model, hooks, box):
-    # hooks is prelogit_features list from load_and_prepare_model()
-    prelogit_features = hooks
+    """
+    Returns:
+        list[float] | None
+        Logits vector for the detection that best matches `box` (xyxy in ORIGINAL image scale).
+        None if no sufficiently good match is found.
+    """
+    # Unpack required hooks (from load_and_prepare_model tuple)
+    assert isinstance(hooks, (list, tuple)) and len(hooks) >= 8, \
+        "Expected full hooks tuple: (input_hook, detect, detect_hook, cv2_hooks, cv3_hooks, cv2_pre_hooks, prelogit_features, prelogit_hooks)"
+    input_hook, detect, detect_hook, cv2_hooks, cv3_hooks, _, _, _ = hooks
 
-    # 1) Run inference to populate hooks
+    # 1) Forward pass to populate hooks
     with torch.no_grad():
-        results = model(img, verbose=False, half=True)
+        model(img, verbose=False, half=True)
 
-    ### Debug PRINT
-    detections = results[0]  # YOLOv8 always returns a list; take first item
-    boxes = detections.boxes  # Boxes object
-    class_ids = boxes.cls.cpu().numpy().astype(int)
-    confidences = boxes.conf.cpu().numpy()
-    names = model.names if hasattr(model, "names") else {i: f"class_{i}" for i in set(class_ids)}
-    if len(class_ids) == 0:
-        print("[YOLOv8 DEBUG] No detections.")
-    else:
-        print("[YOLOv8 DEBUG] Detections:")
-        for cls_id, conf in zip(class_ids, confidences):
-            print(f"  → {names[cls_id]} detected with confidence {conf:.2f}")
+    # 2) Model (letterboxed) and original image shapes
+    try:
+        img_shape = tuple(input_hook.input[0].shape[2:])                 # (H_model, W_model)
+        orig_img_shape = tuple(model.predictor.batch[1][0].shape[:2])    # (H_orig, W_orig)
+    except Exception:
+        # Fallback: use the input tensor and raw image
+        img_shape = img.shape[-2:] if isinstance(img, torch.Tensor) else img.shape[:2]
+        orig_img_shape = img.shape[-2:] if isinstance(img, torch.Tensor) else img.shape[:2]
 
-    # 2) Infer model-input (letterboxed) size from P3 feature map + stride
-    scale_strides = [8, 16, 32]           # P3, P4, P5
-    feat_p3 = prelogit_features[0]        # shape: [B, C, H, W]
-    assert feat_p3 is not None, "Prelogit hook not populated (did model(img) run?)"
-    H3, W3 = int(feat_p3.shape[2]), int(feat_p3.shape[3])
-    img_shape = (H3 * scale_strides[0], W3 * scale_strides[0])  # (model_input_h, model_input_w)
-    orig_img_shape = img.shape[:2]        # (orig_h, orig_w)
+    # 3) Rebuild Detect outputs to access logits (mirrors your run_predict)
+    shape = detect_hook.input[0][0].shape  # BCHW
+    x = []
+    for i in range(detect.nl):
+        x.append(torch.cat((cv2_hooks[i].output, cv3_hooks[i].output), 1))
+    x_cat = torch.cat([xi.view(shape[0], detect.no, -1) for xi in x], 2)
+    _, classes = x_cat.split((detect.reg_max * 4, detect.nc), 1)
 
-    # 3) Convert xyxy from original -> model-input coords (accounts for letterbox)
-    x0, y0, x1, y1 = box["xmin"], box["ymin"], box["xmax"], box["ymax"]
-    xyxy = np.array([x0, y0, x1, y1], dtype=np.float32)
-    x0i, y0i, x1i, y1i = yolo_ops.scale_boxes(orig_img_shape, xyxy, img_shape)
+    batch_idx = 0
+    xywh_sigmoid = detect_hook.output[0][batch_idx]  # [no, HW]
+    all_logits   = classes[batch_idx]                # [no, HW]
 
-    # 4) Choose FPN level from *model-input* box size (match offline)
-    box_w = x1i - x0i
-    box_h = y1i - y0i
-    box_size = max(box_w, box_h)
-    if box_size < 64:
-        scale_idx, stride = 0, 8
-    elif box_size < 128:
-        scale_idx, stride = 1, 16
-    else:
-        scale_idx, stride = 2, 32
+    # 4) Transpose to [N, ...]
+    xywh_sigmoid = xywh_sigmoid.T  # [N, 4+C]
+    all_logits   = all_logits.T    # [N, C]
 
-    # 5) Grab the right feature map and ROIAlign in model-input coords
-    feat_map = prelogit_features[scale_idx][0]     # [C, H, W]
-    rois = torch.tensor([[0, x0i, y0i, x1i, y1i]], dtype=torch.float32, device=feat_map.device)
-    pooled = roi_align(
-        input=feat_map.unsqueeze(0).float(),  # [1, C, H, W]
-        boxes=rois,
-        output_size=(3, 3),
-        spatial_scale=1.0 / stride,
-        aligned=True
-    )  # [1, C, 3, 3]
+    # 5) Convert coords (model-input -> original) for IoU matching
+    coords = xywh_sigmoid[:, :4]   # [N, 4] in model-input scale
+    coords_cpu = coords.detach().cpu().numpy()
+    scaled_coords = np.stack([
+        yolo_ops.scale_boxes(img_shape, coords_cpu[i], orig_img_shape)
+        for i in range(coords_cpu.shape[0])
+    ], axis=0)  # [N, 4] xyxy in ORIGINAL scale
 
-    # 6) Pool + pad + project exactly like offline
-    feature_vec = pooled.view(pooled.shape[1], -1).mean(dim=1)  # [C]
-    C = feature_vec.shape[0]
-    if C < C_max:
-        padded = torch.zeros(C_max, device=feature_vec.device, dtype=feature_vec.dtype)
-        padded[:C] = feature_vec
-        feature_vec = padded
-    elif C > C_max:
-        feature_vec = feature_vec[:C_max]
+    # 6) Build NMS input to get final detections (and keep logits alongside)
+    activations = xywh_sigmoid[:, 4:]  # [N, C] (sigmoid probs)
+    logits      = all_logits           # [N, C]
+    # Convert to cx,cy,w,h for Ultralytics NMS
+    sc = torch.tensor(scaled_coords, dtype=torch.float32, device=coords.device)
+    x0, y0, x1, y1 = sc[:, 0], sc[:, 1], sc[:, 2], sc[:, 3]
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    w, h   = (x1 - x0).clamp(min=0), (y1 - y0).clamp(min=0)
+    bbox_xywh = torch.stack([cx, cy, w, h], dim=1)  # [N, 4]
 
-    projected_vec = proj(feature_vec)                      # (256,)
-    return projected_vec.detach().cpu().numpy().tolist()
+    boxes_for_nms = torch.cat([
+        bbox_xywh,           # [N, 4]
+        activations,         # [N, C]
+        activations,         # [N, C] again (Ultralytics signature)
+        logits               # [N, C]
+    ], dim=1).T.unsqueeze(0) # [1, 4+3C, N]
 
+    nms_results_batch = yolo_ops.non_max_suppression(
+        boxes_for_nms,
+        conf_thres=0.2,
+        iou_thres=0.5,
+        nc=detect.nc
+    )
+
+    # 7) Pick detection that best matches the provided box (original scale)
+    target_xyxy = [
+        float(box["xmin"]), float(box["ymin"]),
+        float(box["xmax"]), float(box["ymax"])
+    ]
+    best_logits = None
+    best_iou = 0.0
+
+    for nms_results in nms_results_batch:
+        if nms_results is None or nms_results.shape[0] == 0:
+            continue
+        for b in range(nms_results.shape[0]):
+            det = nms_results[b, :]
+            dx0, dy0, dx1, dy1, conf, cls, *acts_and_logits = det
+            det_xyxy = [dx0.item(), dy0.item(), dx1.item(), dy1.item()]
+            iou = _boxes_iou_xyxy(target_xyxy, det_xyxy)
+            if iou > best_iou:
+                best_iou = iou
+                # acts_and_logits = [probs C, probs C (dup), logits C]
+                best_logits = [p.item() for p in acts_and_logits[detect.nc:]]
+
+    # Require a minimal IoU so we don't return unrelated logits
+    if best_logits is None or best_iou < 0.3:
+        return None
+    return best_logits
 
 ###################################################################################################
 ############## Mahalanobis++ Threshold ############################################################
@@ -224,11 +323,6 @@ class MahaState:
     def class_row(self, label: int):
         idx = np.where(self.class_ids == label)[0]
         return int(idx[0]) if idx.size else None
-
-    def set_thresholds(self, values):
-        if len(values) != len(self.class_ids):
-            raise ValueError(f"Expected {len(self.class_ids)} thresholds, got {len(values)}")
-        self.thresholds = {int(lbl): float(v) for lbl, v in zip(self.class_ids, values)}
 
 def precompute_maha_state(paths, tpr_target: float = 0.95) -> MahaState:
     """
@@ -335,7 +429,6 @@ label_dict = {
     'drone'     : 0,
     'lander'    : 1,
     'lru2'      : 2,
-    'lru'       : 2,
 }
 
 def reject_outlier_detections(detections, img, model, hooks, maha_state, image_path):
@@ -343,16 +436,20 @@ def reject_outlier_detections(detections, img, model, hooks, maha_state, image_p
     outlier_detections = []
     for box in detections:
         feature_map = get_feature_map(img, model, hooks, box)
+        if feature_map is None:
+            # No matching detection → skip this bbox
+            continue
+
         label = label_dict[box["obj_name"]]
         b, score = is_maha_outlier(feature_map, label, maha_state)
         if b:
-            print(f"Outlier detected: {box}")
-            print(f"    score: {score}")
+            #print(f"Outlier detected: {box}")
+            #print(f"    score: {score}")
             box["path"] = image_path
             outlier_detections.append(box)
         else:
-            print(f"Inlier detected: {box}")
-            print(f"    score: {score}")
+            #print(f"Inlier detected: {box}")
+            #print(f"    score: {score}")
             filtered_detections.append(box)
     return filtered_detections, outlier_detections
 

@@ -49,35 +49,26 @@ def collate_fn(batch):
 # Mahalanobis++ extraction
 # --- Fixed projection: create, then load weights ---
 import torch.nn as nn
-use_pca = False
+
 C_max = 512
 C_out = 256
 
-if use_pca:
-    PROJ_PATH = "/home/chen_le/openset_detection/scripts/pca_512to256.pt"
-    ckpt = torch.load(PROJ_PATH, map_location="cpu")
-    with torch.no_grad():
-        wsum = torch.cat([p.flatten().detach().cpu() for p in proj.parameters()]).sum().item()
-    print(f"[INFO] Loaded projection from {PROJ_PATH} (checksum: {wsum:.6f})")
-    mu, P = ckpt["mu"].to(device), ckpt["P"].to(device)  # [512], [256,512]
-    def project(x512):
-        z = torch.mv(P, x512 - mu)
-        z = z / (z.norm(p=2) + 1e-12)
-        return z
-else: # random projection
-    PROJ_PATH = "/home/chen_le/openset_detection/scripts/projection.pt"
-    proj = nn.Linear(C_max, C_out).to(device)
-    proj.eval()
-    ckpt = torch.load(PROJ_PATH, map_location=device)
-    state = ckpt.get("state_dict", ckpt)
-    proj.load_state_dict(state, strict=True)
-    with torch.no_grad():
-        wsum = torch.cat([p.flatten().detach().cpu() for p in proj.parameters()]).sum().item()
-    print(f"[INFO] Loaded projection from {PROJ_PATH} (checksum: {wsum:.6f})")
-    def project(x512):
-        projected_vec = proj(x512)  # shape: (256,)
-        feature_vec_np = projected_vec.detach().cpu().numpy().tolist()
-        return feature_vec_np
+PROJ_PATH = "/home/chen_le/openset_detection/scripts/projection.pt"
+assert os.path.isfile(PROJ_PATH), f"Projection file not found: {PROJ_PATH}"
+
+# create the layer
+proj = nn.Linear(C_max, C_out).to(device)
+proj.eval()
+
+# load state
+ckpt = torch.load(PROJ_PATH, map_location=device)
+state = ckpt.get("state_dict", ckpt)
+proj.load_state_dict(state, strict=True)
+
+# checksum
+with torch.no_grad():
+    wsum = torch.cat([p.flatten().detach().cpu() for p in proj.parameters()]).sum().item()
+print(f"[INFO] Loaded projection from {PROJ_PATH} (checksum: {wsum:.6f})")
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Test the data and save the raw detections')
@@ -414,6 +405,13 @@ def run_predict(img,
             stride = scale_strides[scale_idx]
             feat_map = prelogit_features[scale_idx]  # shape: [B, C, H, W]
             feat_map = feat_map[0]           # [C, H, W]
+            cx = (x0 + x1) / 2
+            cy = (y0 + y1) / 2
+            x_feat = int(cx.item() / stride)
+            y_feat = int(cy.item() / stride)
+            H, W = feat_map.shape[1:]
+            x_feat = min(max(x_feat, 0), W - 1)
+            y_feat = min(max(y_feat, 0), H - 1)
 
             # Step 1: Box coordinates must be in original image scale
             # (you already do this with `yolo_ops.scale_boxes`)
@@ -454,7 +452,8 @@ def run_predict(img,
                 feature_vec = feature_vec[:C_max]  # should rarely happen
 
             # Project
-            feature_vec_np = project(feature_vec) # x512
+            projected_vec = proj(feature_vec)  # shape: (256,)
+            feature_vec_np = projected_vec.detach().cpu().numpy().tolist()
 
             #print(gt_label, flush=True)
             features_labels.append({

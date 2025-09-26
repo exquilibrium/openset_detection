@@ -8,7 +8,7 @@ echo '     Val:' $5
 echo '    Test:' $6
 echo ' TestOOD:' $7
 
-TEST="False" # EVAL_ONLY if FALSE
+TEST="True" # EVAL_ONLY if FALSE
 
 echo Using normal pipeline
 if [ $TEST == "True" ]
@@ -23,6 +23,6 @@ then
     python associate_data.py YOLOv8 --saveNm $3 --dataset custom
 fi
 echo Getting Results
-#python get_results.py YOLOv8 --saveNm $3 --dataset custom --saveResults True
-#python get_results_mahalanobis.py --saveNm "$3" --dataset "custom" --use_yolo
-python get_results_mahalanobis_outlier.py --saveNm "$3" --dataset "custom" --use_yolo
+python get_results.py YOLOv8 --saveNm $3 --dataset custom --saveResults True
+python get_results_mahalanobis.py --saveNm "$3" --dataset "custom" --use_yolo
+#python get_results_mahalanobis_outlier.py --saveNm "$3" --dataset "custom" --use_yolo

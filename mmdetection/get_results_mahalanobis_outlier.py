@@ -6,7 +6,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.covariance import EmpiricalCovariance
-from sklearn.metrics import roc_auc_score, roc_curve, auc
+from sklearn.metrics import roc_auc_score, roc_curve, precision_recall_curve, auc
 
 currentdir = os.path.dirname(os.path.realpath(__file__))
 parentdir = os.path.dirname(currentdir)
@@ -117,37 +117,90 @@ def evaluate_Mahalanobis_outlier_per_class(
 
     return per_class, agg_pos, agg_neg
 
+def compute_quantile_thresholds(per_class, keep_fraction=0.70):
+    """Return per-class quantile thresholds: dict[c -> tau]."""
+    thresholds = {}
+    q = 1.0 - keep_fraction
+    for c, d in per_class.items():
+        pos = np.asarray(d["pos_scores"])
+        if pos.size == 0:
+            thresholds[c] = -np.inf
+        else:
+            thresholds[c] = float(np.quantile(pos, q))
+    return thresholds
 
-def post_process_outlier_per_class(per_class, agg_pos, agg_neg, save_prefix, title_suffix=""):
+
+def compute_mode_mad_thresholds(per_class, k=2.5, bins=64):
+    """Return per-class mode–MAD thresholds: dict[c -> tau]."""
+    thresholds = {}
+    for c, d in per_class.items():
+        pos = np.asarray(d["pos_scores"])
+        if pos.size == 0:
+            thresholds[c] = -np.inf
+            continue
+
+        # mode via histogram
+        hist, edges = np.histogram(pos, bins=bins)
+        mode_bin = int(np.argmax(hist))
+        mode = 0.5 * (edges[mode_bin] + edges[mode_bin+1])
+
+        left = pos[pos <= mode]
+        if left.size < 3:
+            tau = float(np.quantile(pos, 0.25))
+        else:
+            mad = float(np.median(np.abs(left - np.median(left))))
+            tau = float(mode - k * mad)
+        thresholds[c] = tau
+    return thresholds
+
+
+def _compute_auroc(labels, scores):
+    fpr, tpr, thr = roc_curve(labels, scores, pos_label=1)
+    return fpr, tpr, thr, roc_auc_score(labels, scores)
+
+def _compute_aupr(labels, scores):
+    precision, recall, thr = precision_recall_curve(labels, scores, pos_label=1)  # AUPR-In (ID positive)
+    return precision, recall, thr, auc(recall, precision)
+
+def post_process_outlier_per_class(
+    per_class, agg_pos, agg_neg, save_prefix, title_suffix="",
+    thresholds_quant=None, thresholds_mmad=None
+):
     """
-    - Per-class ROC + AUROC
-    - Macro and weighted AUROC across classes
-    - Per-class histograms with threshold at TPR=0.95 (per class)
+    - Per-class ROC+AUROC and PR+AUPR
+    - Macro and weighted AUROC/AUPR
+    - Per-class histograms with: TPR=0.95 thr, and (if given) Quantile + Mode–MAD thresholds
     """
     save_dir = BASE_DIR_FOLDER + '/results_img'
     os.makedirs(save_dir, exist_ok=True)
 
-    class_auc = {}
-    class_counts = {}
+    class_auc = {}        # AUROC per class
+    class_aupr = {}       # AUPR per class
+    class_counts = {}     # (n_pos, n_neg) per class
 
-    # Per-class ROC and histogram
+    # Per-class ROC/PR and histogram
     for c, d in per_class.items():
-        pos = d["pos_scores"]
-        neg = d["neg_scores"]
+        pos = d["pos_scores"]  # ID (y==c)
+        neg = d["neg_scores"]  # OOD wrt class c (y!=c)
         n_pos, n_neg = d["n_pos"], d["n_neg"]
         if pos.size == 0 or neg.size == 0:
             continue
 
         scores = np.concatenate([pos, neg])
         labels = np.concatenate([np.ones_like(pos), np.zeros_like(neg)])
-        fpr, tpr, thr = roc_curve(labels, scores)
-        auroc = roc_auc_score(labels, scores)
+
+        # --- ROC / AUROC ---
+        fpr, tpr, thr_roc, auroc = _compute_auroc(labels, scores)
         class_auc[c] = auroc
         class_counts[c] = (n_pos, n_neg)
 
-        # Find threshold at TPR=0.95 (if attainable)
+        # --- PR / AUPR (AUPR-In: ID positive) ---
+        precision, recall, thr_pr, aupr = _compute_aupr(labels, scores)
+        class_aupr[c] = aupr
+
+        # Threshold at TPR=0.95 (if attainable)
         idx = np.argmin(np.abs(tpr - 0.95))
-        thr95 = thr[idx]
+        thr95 = thr_roc[idx]
 
         # Histogram (clipped for visibility)
         lower = np.percentile(scores, 1)
@@ -158,160 +211,79 @@ def post_process_outlier_per_class(per_class, agg_pos, agg_neg, save_prefix, tit
         plt.figure(figsize=(8,4))
         plt.hist(pos_clip, bins=50, alpha=0.6, label=f'Inliers(y={c})', color='blue', density=True)
         plt.hist(neg_clip, bins=50, alpha=0.6, label=f'Outliers(y≠{c})', color='red', density=True)
-        plt.axvline(thr95, linestyle='--', label='TPR=0.95 thr')
+        plt.axvline(thr95, linestyle='--', color='black', label=f'TPR95 τ={thr95:.3f}')
+        if thresholds_quant is not None and c in thresholds_quant:
+            tq = float(thresholds_quant[c]); plt.axvline(tq, linestyle='--', color='green',  label=f'Quantile τ={tq:.3f}')
+        if thresholds_mmad is not None and c in thresholds_mmad:
+            tm = float(thresholds_mmad[c]); plt.axvline(tm, linestyle='-.', color='purple', label=f'Mode–MAD τ={tm:.3f}')
         plt.title(f"Class {c} — Mahalanobis++ Scores {title_suffix}")
-        plt.xlabel("Score (higher=inlier-like)")
-        plt.ylabel("Density")
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, f"{save_prefix}_class{c}_hist.png"))
-        plt.close()
+        plt.xlabel("Score (higher=inlier-like)"); plt.ylabel("Density"); plt.legend(); plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, f"{save_prefix}_class{c}_hist.png")); plt.close()
 
-        # ROC
+        # ROC curve
         plt.figure(figsize=(6,6))
         plt.plot(fpr, tpr, label=f'AUROC={auroc:.4f}')
         plt.plot([0,1],[0,1],'k--')
-        plt.xlabel("FPR")
-        plt.ylabel("TPR")
-        plt.title(f"Class {c} — ROC {title_suffix}")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, f"{save_prefix}_class{c}_roc.png"))
-        plt.close()
+        plt.xlabel("FPR"); plt.ylabel("TPR"); plt.title(f"Class {c} — ROC {title_suffix}")
+        plt.legend(); plt.grid(True); plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, f"{save_prefix}_class{c}_roc.png")); plt.close()
 
-    # Macro AUROC (unweighted mean)
+        # PR curve
+        plt.figure(figsize=(6,6))
+        plt.plot(recall, precision, label=f'AUPR-In={aupr:.4f}')
+        plt.xlabel("Recall (ID)"); plt.ylabel("Precision (ID)"); plt.title(f"Class {c} — PR {title_suffix}")
+        plt.legend(); plt.grid(True); plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, f"{save_prefix}_class{c}_pr.png")); plt.close()
+
+    # Macro/Weighted AUROC and AUPR
     if class_auc:
-        macro_auroc = np.mean(list(class_auc.values()))
-        # Weighted AUROC by positive counts (can choose pos, or pos+neg)
+        macro_auroc = float(np.mean(list(class_auc.values())))
+        macro_aupr  = float(np.mean(list(class_aupr.values()))) if class_aupr else np.nan
+
         weights = []
         aucs = []
-        for c, auc_c in class_auc.items():
+        auprs = []
+        for c in class_auc:
             n_pos, n_neg = class_counts[c]
-            weights.append(n_pos)  # weight by positive (inlier) count
-            aucs.append(auc_c)
-        weights = np.array(weights, dtype=float)
-        if weights.sum() > 0:
-            weighted_auroc = np.average(aucs, weights=weights)
-        else:
-            weighted_auroc = macro_auroc
+            weights.append(n_pos)         # weight by positive (inlier) count
+            aucs.append(class_auc[c])
+            if c in class_aupr: auprs.append(class_aupr[c])
+
+        weights = np.asarray(weights, dtype=float)
+        weighted_auroc = float(np.average(aucs, weights=weights)) if weights.sum() > 0 else macro_auroc
+        weighted_aupr  = float(np.average(auprs, weights=weights)) if (len(auprs)>0 and weights.sum()>0) else macro_aupr
 
         print(f"[Per-class] Macro AUROC: {macro_auroc:.4f} | Weighted AUROC: {weighted_auroc:.4f}")
+        print(f"[Per-class] Macro AUPR : {macro_aupr:.4f} | Weighted AUPR : {weighted_aupr:.4f}")
     else:
-        print("[Per-class] Not enough data to compute class AUROCs.")
+        print("[Per-class] Not enough data to compute class AUROCs/AUPRs.")
 
-    # Global aggregate ROC (across all classes)
+    # Global aggregate ROC & PR (across all classes)
     if agg_pos.size and agg_neg.size:
         scores_all = np.concatenate([agg_pos, agg_neg])
         labels_all = np.concatenate([np.ones_like(agg_pos), np.zeros_like(agg_neg)])
-        fpr, tpr, _ = roc_curve(labels_all, scores_all)
-        auroc_all = roc_auc_score(labels_all, scores_all)
-        print(f"[Aggregate across classes] AUROC: {auroc_all:.4f}")
 
+        fpr, tpr, _ , auroc_all = _compute_auroc(labels_all, scores_all)
+        precision, recall, _, aupr_all = _compute_aupr(labels_all, scores_all)
+        print(f"[Aggregate across classes] AUROC: {auroc_all:.4f} | AUPR-In: {aupr_all:.4f}")
+
+        # Aggregate ROC
         plt.figure(figsize=(6,6))
         plt.plot(fpr, tpr, label=f'AUROC={auroc_all:.4f}')
         plt.plot([0,1],[0,1],'k--')
-        plt.xlabel("FPR")
-        plt.ylabel("TPR")
-        plt.title(f"Aggregate ROC {title_suffix}")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, f"{save_prefix}_aggregate_roc.png"))
-        plt.close()
+        plt.xlabel("FPR"); plt.ylabel("TPR"); plt.title(f"Aggregate ROC {title_suffix}")
+        plt.legend(); plt.grid(True); plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, f"{save_prefix}_aggregate_roc.png")); plt.close()
+
+        # Aggregate PR
+        plt.figure(figsize=(6,6))
+        plt.plot(recall, precision, label=f'AUPR-In={aupr_all:.4f}')
+        plt.xlabel("Recall (ID)"); plt.ylabel("Precision (ID)"); plt.title(f"Aggregate PR {title_suffix}")
+        plt.legend(); plt.grid(True); plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, f"{save_prefix}_aggregate_pr.png")); plt.close()
     else:
-        print("[Aggregate] Not enough data for aggregate ROC.")
+        print("[Aggregate] Not enough data for aggregate ROC/PR.")
 
-
-# -------- Original OOD (kept in case you still want it) --------
-def evaluate_Mahalanobis_norm(feature_id_train, feature_id_val, feature_ood, train_labels, _test_labels_unused=None):
-    print(np.shape(feature_id_train))
-    print(np.shape(feature_id_val))
-    print(np.shape(feature_ood))
-    print(np.shape(train_labels))
-
-    feature_id_val = feature_id_val / np.linalg.norm(feature_id_val, axis=-1, keepdims=True)
-    feature_ood     = feature_ood     / np.linalg.norm(feature_ood, axis=-1, keepdims=True)
-    feature_id_train= feature_id_train/ np.linalg.norm(feature_id_train, axis=-1, keepdims=True)
-
-    classes_ids = np.unique(train_labels.ravel())
-    train_means = []
-    train_feat_centered = []
-    for i in tqdm.tqdm(classes_ids):
-        fs = feature_id_train[train_labels.ravel() == i]
-        _m = fs.mean(axis=0)
-        train_means.append(_m)
-        train_feat_centered.extend(fs - _m)
-    ec = EmpiricalCovariance(assume_centered=True)
-    ec.fit(np.array(train_feat_centered).astype(np.float64))
-    mean = torch.from_numpy(np.array(train_means)).cuda().double()
-    prec = torch.from_numpy(ec.precision_).cuda().double()
-
-    score_id = -np.array([(((f - mean) @ prec) * (f - mean)).sum(axis=-1).min().cpu().item()
-                          for f in tqdm.tqdm(torch.from_numpy(feature_id_val).cuda().double())])
-    score_ood = -np.array([(((f - mean) @ prec) * (f - mean)).sum(axis=-1).min().cpu().item()
-                           for f in tqdm.tqdm(torch.from_numpy(feature_ood).cuda().double())])
-    return score_id, score_ood
-
-
-def post_process_Mahalanobis_norm(score_id, score_ood, save_prefix, logits=False):
-    s = '_logits' if logits else ''
-
-    mean_id = np.mean(score_id); std_id = np.std(score_id)
-    score_id_norm  = (score_id - mean_id) / std_id
-    score_ood_norm = (score_ood - mean_id) / std_id
-
-    if np.mean(score_ood_norm) > np.mean(score_id_norm):
-        print("Inverting score signs (high score must mean more ID-like)...")
-        score_id_norm *= -1; score_ood_norm *= -1
-
-    scores = np.concatenate([score_id_norm, score_ood_norm])
-    labels = np.concatenate([np.ones_like(score_id_norm), np.zeros_like(score_ood_norm)])
-    fpr, tpr, thresholds = roc_curve(labels, scores)
-    auroc = roc_auc_score(labels, scores)
-    print(f"AUROC: {auroc:.4f}")
-
-    def tpr_at_fpr(fpr, tpr, target_fpr):
-        idx = np.argmin(np.abs(fpr - target_fpr))
-        return tpr[idx]
-    for target in [0.2, 0.1, 0.05]:
-        print(f"TPR at FPR={target:.2f}: {tpr_at_fpr(fpr, tpr, target):.4f}")
-
-    # Choose TPR=0.95 threshold for plotting
-    idx = np.argmin(np.abs(tpr - 0.95))
-    threshold = thresholds[idx]
-    label_thresh = 'TPR=0.95 threshold'
-
-    save_dir = BASE_DIR_FOLDER + '/results_img'
-    os.makedirs(save_dir, exist_ok=True)
-    lower_clip = np.percentile(scores, 1)
-    upper_clip = np.percentile(scores, 99)
-    score_id_clipped  = np.clip(score_id_norm,  lower_clip, upper_clip)
-    score_ood_clipped = np.clip(score_ood_norm, lower_clip, upper_clip)
-
-    plt.figure(figsize=(8,4))
-    plt.hist(score_id_clipped, bins=50, alpha=0.6, label='ID (val)', color='blue', density=True)
-    plt.hist(score_ood_clipped, bins=50, alpha=0.6, label='OOD (test)', color='red', density=True)
-    plt.axvline(threshold, linestyle='--', label=label_thresh)
-    plt.title("Mahalanobis++ Normalized Score Distributions")
-    plt.xlabel("Normalized Mahalanobis Score")
-    plt.ylabel("Density")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f"{save_prefix}mahalanobis_score_distribution{s}.png"))
-    plt.close()
-
-    plt.figure(figsize=(6,6))
-    plt.plot(fpr, tpr, label=f'AUROC = {auroc:.4f}')
-    plt.plot([0,1],[0,1],'k--')
-    plt.xlabel("False Positive Rate")
-    plt.ylabel("True Positive Rate")
-    plt.title("Mahalanobis++ ROC Curve")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f"{save_prefix}mahalanobis_roc_curve{s}.png"))
-    plt.close()
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--saveNm', type=str, required=True, help='Base filename used when saving features')
@@ -341,21 +313,15 @@ per_class, agg_pos, agg_neg = evaluate_Mahalanobis_outlier_per_class(
     feature_id_val,   val_labels,
     feature_test,     test_labels
 )
+thr_quant = compute_quantile_thresholds(per_class, keep_fraction=0.70)
+thr_mmad  = compute_mode_mad_thresholds(per_class, k=2.5)
 post_process_outlier_per_class(
     per_class, agg_pos, agg_neg,
     save_prefix=os.path.join(args.saveNm + "_feature_"),
-    title_suffix="(Feature Maps)"
+    title_suffix="(Feature Maps)",
+    thresholds_quant=thr_quant,
+    thresholds_mmad=thr_mmad
 )
-
-# --- If you still want legacy OOD (min over classes) for comparison ---
-score_id, score_ood = evaluate_Mahalanobis_norm(
-    feature_id_train,
-    feature_id_val,
-    feature_test,
-    train_labels,
-    _test_labels_unused=test_labels
-)
-post_process_Mahalanobis_norm(score_id, score_ood, save_prefix=args.saveNm + "_feature_", logits=False)
 
 # ===== Logits =====
 feature_id_train = np.load(os.path.join(train_path, f'{args.saveNm}_feature_id_train_logits.npy'))
@@ -370,17 +336,12 @@ per_class, agg_pos, agg_neg = evaluate_Mahalanobis_outlier_per_class(
     feature_id_val,   val_labels,
     feature_test,     test_labels
 )
+thr_quant = compute_quantile_thresholds(per_class, keep_fraction=0.70)
+thr_mmad  = compute_mode_mad_thresholds(per_class, k=2.5)
 post_process_outlier_per_class(
     per_class, agg_pos, agg_neg,
     save_prefix=os.path.join(args.saveNm + "_logits_"),
-    title_suffix="(Logits)"
+    title_suffix="(Logits)",
+    thresholds_quant=thr_quant,
+    thresholds_mmad=thr_mmad
 )
-
-# Legacy OOD on logits (optional)
-score_id, score_ood = evaluate_Mahalanobis_norm(
-    feature_id_train,
-    feature_id_val,
-    feature_test,
-    train_labels
-)
-post_process_Mahalanobis_norm(score_id, score_ood, save_prefix=args.saveNm + "_logits_", logits=True)

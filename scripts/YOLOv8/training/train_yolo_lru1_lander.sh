@@ -15,5 +15,5 @@ yolo detect train \
   project="runs/detect" \
   name="train_lru1_lander"
 
-python remap_yolo_labels.py "${BASE_DATA_FOLDER}/lru1_all/JPEGImages" 0,1,2 2,0,1 --reverse
+python remap_yolo_labels.py "${BASE_DATA_FOLDER}/lru1_all/JPEGImages" 0,1,2 0,2,1 --reverse
 

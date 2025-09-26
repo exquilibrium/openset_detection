@@ -1,7 +1,7 @@
 import argparse
 import random
 
-def create_mixed_imageset(ood_bg_file: str, bg_file: str, output_file: str, bg_fraction: float = 0.1, seed: int = 42):
+def create_mixed_imageset(ood_bg_file: str, bg_file: str, output_file: str, bg_fraction: float = 0.05, seed: int = 42):
     """
     Create a new imageset file consisting of OOD samples + a fraction of background images.
 
@@ -35,17 +35,21 @@ def create_mixed_imageset(ood_bg_file: str, bg_file: str, output_file: str, bg_f
 
     print(f"✅ Created {output_file} with {len(ood_lines)} OOD and {len(sampled_bg)} BG (seed={seed}).")
 
+# SET DATASET
+dataset = "ardea10_all" #lru1_all
+
 print("<", end="")
 l = ["Main",
- "Main_CS_drone",
+ #"Main_CS_drone",
  "Main_CS_lander",
+ "Main_CS_lru1",
  "Main_CS_lru2"]
 for x in l:
-    bg = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/Main/bg.txt'
-    test = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/{x}/test.txt'
-    ood = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/{x}/test_ood.txt'
-    test_out = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/{x}/test(10bg).txt'
-    ood_out = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/{x}/test_ood(10bg).txt'
+    bg = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/{dataset}/ImageSets/Main/bg.txt'
+    test = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/{dataset}/ImageSets/{x}/test.txt'
+    ood = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/{dataset}/ImageSets/{x}/test_ood.txt'
+    test_out = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/{dataset}/ImageSets/{x}/test(small_bg).txt'
+    ood_out = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/{dataset}/ImageSets/{x}/test_ood(small_bg).txt'
     create_mixed_imageset(ood, bg, ood_out)
     create_mixed_imageset(test, bg, test_out)
     print("|", end="")
@@ -53,15 +57,16 @@ print("> finished")
 
 print("<", end="")
 l = ["YOLO",
- "YOLO_CS_drone",
+ #"YOLO_CS_drone",
  "YOLO_CS_lander",
+ "YOLO_CS_lru1",
  "YOLO_CS_lru2"]
 for x in l:
-    bg = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/YOLO/bg_yolo.txt'
-    test = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/{x}/test.txt'
-    ood = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/{x}/test_ood.txt'
-    test_out = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/{x}/test(10bg).txt'
-    ood_out = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/lru1_all/ImageSets/{x}/test_ood(10bg).txt'
+    bg = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/{dataset}/ImageSets/YOLO/bg_yolo.txt'
+    test = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/{dataset}/ImageSets/{x}/test.txt'
+    ood = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/{dataset}/ImageSets/{x}/test_ood.txt'
+    test_out = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/{dataset}/ImageSets/{x}/test(small_bg).txt'
+    ood_out = f'/volume/hot_storage/slurm_data/chen_le/ARCHES/{dataset}/ImageSets/{x}/test_ood(small_bg).txt'
     create_mixed_imageset(ood, bg, ood_out)
     create_mixed_imageset(test, bg, test_out)
     print("|", end="")
