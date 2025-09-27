@@ -229,44 +229,51 @@ for i, data in enumerate(tqdm.tqdm(data_loader, total = num_images)):
             filtered_boxes  = rois[keep_score, 1:5]           # [N_filtered, 4]
             filtered_labels = labels[keep_score]              # [1,N] last label is background
 
-            # Load ground-truth boxes and labels
-            gtData = data_loader.dataset.get_ann_info(i)
-            gt_boxes = torch.tensor(gtData['bboxes'], dtype=torch.float32)    # [M, 4]
-            gt_labels = torch.tensor(gtData['labels'], dtype=torch.int64)     # [M]
-            if gt_boxes.numel() == 0:
-                continue  # Skip if no GT boxes
-
-            # Match each GT box to the best RoI via IoU
-            img_meta = data['img_metas'][0].data[0][0]  # Rescale boxes
-            scale_factor = img_meta['scale_factor']
-            gt_boxes = gt_boxes * torch.tensor(scale_factor, dtype=torch.float32)
-
-            from mmdet.core.bbox.iou_calculators import bbox_overlaps
-            ious = bbox_overlaps(gt_boxes, filtered_boxes)     # [M, N]
-
-            # For each GT box, find best-matching RoI
-            matched_feats = []
-            matched_labels = []
-            matched_logits = []
-            
-            for gt_idx in range(len(gt_boxes)):
-                gt_label = gt_labels[gt_idx]
-                iou_row = ious[gt_idx]                            # IoUs to all preds
-                match_mask = (iou_row >= 0.7) & (filtered_labels == gt_label)
-
-                if match_mask.sum() == 0:
-                    continue  # no valid matching detection
-
-                best_idx = iou_row[match_mask].argmax()
-                selected_feat = filtered_feats[match_mask][best_idx]  # [C, 7, 7]
-                selected_logit = logits[keep_score][match_mask][best_idx]  # Exclude background logit
-
-                matched_feats.append(selected_feat)
-                matched_labels.append(gt_label)
-                matched_logits.append(selected_logit)
-
-            if len(matched_feats) == 0:
-                continue
+            if args.subset == 'train'
+                # Load ground-truth boxes and labels
+                gtData = data_loader.dataset.get_ann_info(i)
+                gt_boxes = torch.tensor(gtData['bboxes'], dtype=torch.float32)    # [M, 4]
+                gt_labels = torch.tensor(gtData['labels'], dtype=torch.int64)     # [M]
+                if gt_boxes.numel() == 0:
+                    continue  # Skip if no GT boxes
+    
+                # Match each GT box to the best RoI via IoU
+                img_meta = data['img_metas'][0].data[0][0]  # Rescale boxes
+                scale_factor = img_meta['scale_factor']
+                gt_boxes = gt_boxes * torch.tensor(scale_factor, dtype=torch.float32)
+    
+                from mmdet.core.bbox.iou_calculators import bbox_overlaps
+                ious = bbox_overlaps(gt_boxes, filtered_boxes)     # [M, N]
+    
+                # For each GT box, find best-matching RoI
+                matched_feats = []
+                matched_labels = []
+                matched_logits = []
+                
+                for gt_idx in range(len(gt_boxes)):
+                    gt_label = gt_labels[gt_idx]
+                    iou_row = ious[gt_idx]                            # IoUs to all preds
+                    match_mask = (iou_row >= 0.7) & (filtered_labels == gt_label)
+    
+                    if match_mask.sum() == 0:
+                        continue  # no valid matching detection
+    
+                    best_idx = iou_row[match_mask].argmax()
+                    selected_feat = filtered_feats[match_mask][best_idx]  # [C, 7, 7]
+                    selected_logit = logits[keep_score][match_mask][best_idx]  # Exclude background logit
+    
+                    matched_feats.append(selected_feat)
+                    matched_labels.append(gt_label)
+                    matched_logits.append(selected_logit)
+    
+                if len(matched_feats) == 0:
+                    continue
+            else:
+                # Apply NMS (IoU threshold 0.5)
+                keep_inds = nms(filtered_boxes, filtered_scores, iou_threshold=0.5)
+                matched_feats.append(selected_feat[keep_inds])
+                matched_labels.append(gt_label[keep_inds])
+                matched_logits.append(selected_logit[keep_inds])
 
             pooled_feats = torch.stack(matched_feats).mean(dim=[2, 3])  # [K, C]
             pooled_logits = torch.stack(matched_logits)  # shape: [K, num_classes - 1]
