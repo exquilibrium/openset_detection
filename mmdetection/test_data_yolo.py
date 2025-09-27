@@ -372,7 +372,7 @@ def run_predict(img,
     # ---------- Mahalanobis++  Feature Extraction ----------
     features = []
     # train, val
-    if args.subset in ['train', 'val']:
+    if args.subset in ['train']:
         features_labels = []
 
         # Loop over GT boxes
@@ -465,7 +465,8 @@ def run_predict(img,
         features = features_labels
     
     # test_ood.txt
-    elif args.subset == 'testOOD':
+    elif args.subset in ['val', 'testOOD']:
+		min_conf = 0.5 if args.subset == 'val' else 0.2
         features_ood = []
 
         # Get all boxes above threshold
@@ -473,7 +474,7 @@ def run_predict(img,
         for b in range(nms_results.shape[0]):
             box = nms_results[b, :]
             x0, y0, x1, y1, conf, cls, *acts_and_logits = box
-            if conf.item() > 0.2: # 0.5
+            if conf.item() > min_conf:
                 filtered.append((b, [x0.item(), y0.item(), x1.item(), y1.item()], acts_and_logits[detect.nc:], int(cls.item())))
 
         # Keep only boxes that do NOT overlap (IoU > 0.5) with any other
