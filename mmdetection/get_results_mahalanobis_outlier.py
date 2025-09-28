@@ -5,7 +5,7 @@ import tqdm
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.covariance import EmpiricalCovariance
+from sklearn.covariance import LedoitWolf
 from sklearn.metrics import roc_auc_score, roc_curve, precision_recall_curve, auc
 
 currentdir = os.path.dirname(os.path.realpath(__file__))
@@ -31,11 +31,11 @@ def _fit_shared_precision_and_means(feature_id_train, train_labels):
         centered.append(fs - m)
 
     centered = np.concatenate(centered, axis=0).astype(np.float64)
-    ec = EmpiricalCovariance(assume_centered=True)
-    ec.fit(centered)
+    lw = LedoitWolf(assume_centered=True)
+    lw.fit(np.asarray(train_feat_centered, dtype=np.float64))
 
     mean = torch.from_numpy(np.vstack(means)).cuda().double()        # [C, D]
-    prec = torch.from_numpy(ec.precision_).cuda().double()           # [D, D]
+    prec = torch.from_numpy(lw.precision_).cuda().double()           # [D, D]
     return mean, prec, classes
 
 
